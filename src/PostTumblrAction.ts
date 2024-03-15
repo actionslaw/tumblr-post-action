@@ -1,4 +1,12 @@
+import { TumblrConfig } from "./TumblrConfig";
+
 export class PostTumblrAction {
-  async post(test: string): Promise<void> {
+  private config: TumblrConfig
+
+  constructor(config: TumblrConfig) {
+    this.config = config;
+  }
+
+  async post(text: string): Promise<void> {
   }
 }

@@ -1,10 +1,31 @@
+import { TumblrConfig } from './TumblrConfig'
 import { PostTumblrAction } from './PostTumblrAction'
+import { Monad, Validate } from './fp'
 import * as core from '@actions/core'
 
-const action = new PostTumblrAction();
+const validateRequiredInput = (key: string) => Validate.required(key)(core.getInput(key))
+const validateRequiredSecret = (key: string) => {
+  const input = yield Validate.required(key)(core.getInput(key))
+  core.setSecret(input)
+  return input
+}
 
 try {
-  const text = core.getInput("text");
+  const consumerKey = yield validateRequiredSecret('consumer-key')
+  const consumerSecret = yield * validateRequiredSecret('consumer-secret')
+  const accessToken = yield * validateRequiredSecret('access-token')
+  const accessTokenSecret = yield * validateRequiredSecret('access-token-secret')
+
+  const config: TumblrConfig = {
+    consumerKey: consumerKey,
+    consumerSecret: consumerSecret,
+    accessToken: accessToken,
+    accessTokenSecret: accessTokenSecret
+  }
+
+  const action = new PostTumblrAction(config);
+
+  const text = yield * validateRequiredInput("text");
   const media = core.getInput("media");
   const replyTo = core.getInput("replyTo");
 
