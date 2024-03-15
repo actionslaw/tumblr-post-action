@@ -1,4 +1,3 @@
-import { Effect } from 'effect'
 import { PostTumblrAction } from './action'
 
 // import { TumblrConfig } from './TumblrConfig'
@@ -46,4 +45,4 @@ import { PostTumblrAction } from './action'
 // const program = Console.log('Hello, World!').pipe(Console.error("Whoops").pipe)
 
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
-Effect.runSync(PostTumblrAction.program)
+// Effect.runSync(PostTumblrAction.program)
