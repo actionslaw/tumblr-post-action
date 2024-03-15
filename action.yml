@@ -20,8 +20,8 @@ inputs:
     required: false
   consumer-key:
     description: >
-      Consumer API key, available from the Tumblr OAuth applications
-      page: https://www.tumblr.com/oauth/apps.
+      Consumer API key, available from the Tumblr OAuth applications page:
+      https://www.tumblr.com/oauth/apps.
     required: true
   consumer-secret:
     description: >
@@ -35,8 +35,8 @@ inputs:
     required: true
   access-token-secret:
     description: >
-      Application access token secret, available from the Tumblr OAuth applications
-      page: https://www.tumblr.com/oauth/apps.
+      Application access token secret, available from the Tumblr OAuth
+      applications page: https://www.tumblr.com/oauth/apps.
     required: true
 
 runs:

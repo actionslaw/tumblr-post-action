@@ -1,42 +1,49 @@
-import { TumblrConfig } from './TumblrConfig'
-import { PostTumblrAction } from './PostTumblrAction'
-import { Monad, Validate } from './fp'
-import * as core from '@actions/core'
+import { Effect } from 'effect'
+import { PostTumblrAction } from './action'
 
-const validateRequiredInput = (key: string) => Validate.required(key)(core.getInput(key))
-const validateRequiredSecret = (key: string) => {
-  const input = yield Validate.required(key)(core.getInput(key))
-  core.setSecret(input)
-  return input
-}
+// import { TumblrConfig } from './TumblrConfig'
+// import { PostTumblrAction } from './PostTumblrAction'
+// import * as core from '@actions/core'
 
-try {
-  const consumerKey = yield validateRequiredSecret('consumer-key')
-  const consumerSecret = yield * validateRequiredSecret('consumer-secret')
-  const accessToken = yield * validateRequiredSecret('access-token')
-  const accessTokenSecret = yield * validateRequiredSecret('access-token-secret')
+// const validateRequiredInput = (key: string) => Validate.required(key)(core.getInput(key))
+// const validateRequiredSecret = (key: string) => {
+//   const input = yield Validate.required(key)(core.getInput(key))
+//   core.setSecret(input)
+//   return input
+// }
 
-  const config: TumblrConfig = {
-    consumerKey: consumerKey,
-    consumerSecret: consumerSecret,
-    accessToken: accessToken,
-    accessTokenSecret: accessTokenSecret
-  }
+// try {
+//   const consumerKey = yield validateRequiredSecret('consumer-key')
+//   const consumerSecret = yield * validateRequiredSecret('consumer-secret')
+//   const accessToken = yield * validateRequiredSecret('access-token')
+//   const accessTokenSecret = yield * validateRequiredSecret('access-token-secret')
 
-  const action = new PostTumblrAction(config);
+//   const config: TumblrConfig = {
+//     consumerKey: consumerKey,
+//     consumerSecret: consumerSecret,
+//     accessToken: accessToken,
+//     accessTokenSecret: accessTokenSecret
+//   }
 
-  const text = yield * validateRequiredInput("text");
-  const media = core.getInput("media");
-  const replyTo = core.getInput("replyTo");
+//   const action = new PostTumblrAction(config);
 
-  if (!text) {
-    core.setFailed("Missing text input is required")
-  } else {
-    core.info(`🥃 Sending post [${text}]`)
+//   const text = yield * validateRequiredInput("text");
+//   const media = core.getInput("media");
+//   const replyTo = core.getInput("replyTo");
 
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    action.post(text);
-  }
-} catch (error) {
-  if (error instanceof Error) core.setFailed(error.message)
-}
+//   if (!text) {
+//     core.setFailed("Missing text input is required")
+//   } else {
+//     core.info(`🥃 Sending post [${text}]`)
+
+//
+//     action.post(text);
+//   }
+// } catch (error) {
+//   if (error instanceof Error) core.setFailed(error.message)
+// }
+
+// const program = Console.log('Hello, World!').pipe(Console.error("Whoops").pipe)
+
+// eslint-disable-next-line @typescript-eslint/no-floating-promises
+Effect.runSync(PostTumblrAction.program)
