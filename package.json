@@ -1,21 +1,22 @@
 {
-  "name": "typescript-action",
-  "description": "GitHub Actions TypeScript template",
+  "name": "tumblr-post-action",
+  "description": "Automatically post to Tumblr via Github Actions",
   "version": "0.0.0",
   "author": "",
   "private": true,
-  "homepage": "https://github.com/actions/typescript-action",
+  "homepage": "https://github.com/actionslaw/tumblr-post-action",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/actions/typescript-action.git"
+    "url": "git+https://github.com/actionslaw/tumblr-post-action.git"
   },
   "bugs": {
-    "url": "https://github.com/actions/typescript-action/issues"
+    "url": "https://github.com/actionslaw/tumblr-post-action/issues"
   },
   "keywords": [
     "actions",
     "node",
-    "setup"
+    "social",
+    "tumblr"
   ],
   "exports": {
     ".": "./dist/index.js"
