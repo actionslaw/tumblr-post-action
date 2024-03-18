@@ -1,54 +1,42 @@
-import { Monad } from "fp-ts/Monad"
-import { HKT, URIS } from 'fp-ts/HKT'
-
-// import { Validate } from './validate'
-// import * as core from '@actions/core'
-
-// interface TumblrConfig {
-//   consumerKey: string
-//   consumerSecret: string
-//   accessToken: string
-//   accessTokenSecret: string
-// }
-
-// export class PostTumblrAction {
-//   private config: TumblrConfig
-
-//   constructor(config: TumblrConfig) {
-//     this.config = config
-//   }
-
-//   post(text: string): Effect.Effect<void> {
-//     return Console.log(text)
-//   }
-
-//   static program = Effect.gen(function* (_) {
-//     const consumerKey = yield* _(Validate.required<string>('consumer-key')(core.getInput))
-//     const consumerSecret = yield* _(Validate.required<string>('consumer-secret')(core.getInput))
-//     const accessToken = yield* _(Validate.required<string>('access-token')(core.getInput))
-//     const accessTokenSecret = yield* _(Validate.required<string>('access-token-secret')(core.getInput))
-
-//     const config: TumblrConfig = {
-//       consumerKey,
-//       consumerSecret,
-//       accessToken,
-//       accessTokenSecret
-//     }
-
-//     const action = new PostTumblrAction(config)
-
-//     const text = yield* _(Validate.required<string>('text')(core.getInput))
-
-//     core.info(`🥃 Sending post [${text}]`)
-//     return action.post(text)
-//   })
-
-// }
+import { Runtime, GithubActionsRuntime } from './runtime'
+import { Logger, GithubActionsLogger } from './logger'
+import { Validate } from './validate'
+import { Tumblr, TumblrConfig } from './tumblr'
 
 export class PostTumblrAction {
+  private readonly runtime: Runtime
+  private readonly logger: Logger
 
-  static program<M extends URIS>(M: Monad): () => HKT<M, void> {
-    return () => console.log("action")
+  constructor(
+    runtime: Runtime = GithubActionsRuntime,
+    logger: Logger = GithubActionsLogger
+  ) {
+    this.runtime = runtime
+    this.logger = logger
   }
 
+  async run() {
+    const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] =
+      await Validate.checkAll<string>([
+        Validate.required('consumer-key')(this.runtime.inputs),
+        Validate.required('consumer-secret')(this.runtime.inputs),
+        Validate.required('access-token')(this.runtime.inputs),
+        Validate.required('access-token-secret')(this.runtime.inputs),
+        Validate.required('text')(this.runtime.inputs)
+      ])
+
+    const config: TumblrConfig = {
+      consumerKey,
+      consumerSecret,
+      accessToken,
+      accessTokenSecret
+    }
+
+    const tumblr = new Tumblr(config)
+
+    await this.logger.info(`🥃 Sending post [${text}]`)
+    await tumblr.post(text)
+
+    console.log(tumblr)
+  }
 }
