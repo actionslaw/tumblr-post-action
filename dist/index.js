@@ -24706,15 +24706,38 @@ exports["default"] = _default;
 /***/ }),
 
 /***/ 7672:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PostTumblrAction = void 0;
 const runtime_1 = __nccwpck_require__(7073);
 const logger_1 = __nccwpck_require__(4636);
-const validate_1 = __nccwpck_require__(4953);
+const Validate = __importStar(__nccwpck_require__(4953));
 const tumblr_1 = __nccwpck_require__(8537);
 class PostTumblrAction {
     runtime;
@@ -24724,12 +24747,12 @@ class PostTumblrAction {
         this.logger = logger;
     }
     async run() {
-        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] = await validate_1.Validate.checkAll([
-            validate_1.Validate.required('consumer-key')(this.runtime.inputs),
-            validate_1.Validate.required('consumer-secret')(this.runtime.inputs),
-            validate_1.Validate.required('access-token')(this.runtime.inputs),
-            validate_1.Validate.required('access-token-secret')(this.runtime.inputs),
-            validate_1.Validate.required('text')(this.runtime.inputs)
+        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] = await Validate.checkAll([
+            Validate.required('consumer-key')(this.runtime.inputs),
+            Validate.required('consumer-secret')(this.runtime.inputs),
+            Validate.required('access-token')(this.runtime.inputs),
+            Validate.required('access-token-secret')(this.runtime.inputs),
+            Validate.required('text')(this.runtime.inputs)
         ]);
         const config = {
             consumerKey,
@@ -24737,7 +24760,7 @@ class PostTumblrAction {
             accessToken,
             accessTokenSecret
         };
-        const tumblr = new tumblr_1.Tumblr(config);
+        const tumblr = new tumblr_1.Tumblr(config, this.logger);
         await this.logger.info(`🥃 Sending post [${text}]`);
         await tumblr.post(text);
         console.log(tumblr);
@@ -24780,8 +24803,8 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.GithubActionsLogger = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 exports.GithubActionsLogger = new (class {
-    info = (message) => Promise.resolve(core.info(message));
-    debug = (message) => Promise.resolve(core.debug(message));
+    info = async (message) => Promise.resolve(core.info(message));
+    debug = async (message) => Promise.resolve(core.debug(message));
 })();
 
 
@@ -24819,7 +24842,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.GithubActionsRuntime = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 exports.GithubActionsRuntime = new (class {
-    inputs = (key) => Promise.resolve(core.getInput(key));
+    inputs = async (key) => Promise.resolve(core.getInput(key));
 })();
 
 
@@ -24834,10 +24857,14 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.Tumblr = void 0;
 class Tumblr {
     config;
-    constructor(config) {
+    logger;
+    constructor(config, logger) {
         this.config = config;
+        this.logger = logger;
     }
-    async post(text) { }
+    async post(text) {
+        await this.logger.info(text);
+    }
 }
 exports.Tumblr = Tumblr;
 
@@ -24850,7 +24877,7 @@ exports.Tumblr = Tumblr;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.Validate = exports.ValidationsFailed = exports.InvalidField = void 0;
+exports.checkAll = exports.required = exports.ValidationsFailed = exports.InvalidField = void 0;
 class InvalidField extends Error {
     field;
     code;
@@ -24871,47 +24898,39 @@ class ValidationsFailed extends Error {
     }
 }
 exports.ValidationsFailed = ValidationsFailed;
-class Validate {
-    constructor() { }
-    static required(field) {
-        return (store) => new Promise(async (resolve, reject) => {
-            const valid = await store(field);
-            if (valid)
-                resolve(valid);
-            else
-                reject(new InvalidField(field, 'missing'));
-        });
-    }
-    static checkAll(validations) {
-        return Promise.allSettled(validations).then(results => {
-            const successful = results
-                .map(Validate.fulfilled)
-                .filter((item) => !!item);
-            const failed = results
-                .map(Validate.failed)
-                .filter((item) => !!item);
-            const validationFailed = failed
-                .filter(e => e instanceof InvalidField)
-                .filter((e) => e);
-            if (failed.length > 0)
-                throw new ValidationsFailed(validationFailed);
-            return successful;
-        });
-    }
-    static fulfilled(result) {
-        if (result.status == 'fulfilled') {
-            const success = result;
-            return success.value;
-        }
-    }
-    static failed(result) {
-        if (result.status == 'rejected') {
-            const failure = result;
-            return failure.reason;
-        }
+function required(field) {
+    return async (store) => {
+        const valid = await store(field);
+        if (valid)
+            return valid;
+        else
+            return Promise.reject(new InvalidField(field, 'missing'));
+    };
+}
+exports.required = required;
+async function checkAll(validations) {
+    const results = await Promise.allSettled(validations);
+    const successful = results.map(fulfilled).filter((item) => !!item);
+    const failed = results.map(rejected).filter(item => !!item);
+    const validationFailed = failed
+        .filter(e => e instanceof InvalidField)
+        .filter((e) => !!e);
+    if (failed.length > 0)
+        throw new ValidationsFailed(validationFailed);
+    // TODO handle non-validation errors
+    return successful;
+}
+exports.checkAll = checkAll;
+function fulfilled(result) {
+    if (result.status === 'fulfilled') {
+        return result.value;
     }
 }
-exports.Validate = Validate;
+function rejected(result) {
+    if (result.status === 'rejected') {
+        return result.reason;
+    }
+}
 
 
 /***/ }),
