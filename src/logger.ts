@@ -6,7 +6,9 @@ export interface Logger {
 }
 
 export const GithubActionsLogger = new (class implements Logger {
-  info = (message: string) => Promise.resolve(core.info(message))
+  info = async (message: string): Promise<void> =>
+    Promise.resolve(core.info(message))
 
-  debug = (message: string) => Promise.resolve(core.debug(message))
+  debug = async (message: string): Promise<void> =>
+    Promise.resolve(core.debug(message))
 })()

@@ -10,7 +10,7 @@ Automatically post to Tumblr via Github Actions.
 
 ## Usage
 
-Configure your workflow to use `actionslaw/tumblr-post-action@v`, and provide
+Configure your workflow to use `actionslaw/tumblr-post-action@v1`, and provide
 the post you want to wrapsend as the `text` input. You can specify a post you'd
 like to reply to using the `replyTo` input. You can create image posts by
 setting the `media` input to point to a folder containting images.
@@ -45,7 +45,7 @@ your behalf.
 ## Development
 
 After you've cloned the repository to your local machine or codespace, you'll
-need to perform some initial setup steps before you can develop your action.
+need to perform some initial setup steps.
 
 > [!NOTE]
 >
@@ -67,7 +67,7 @@ need to perform some initial setup steps before you can develop your action.
 1. :building_construction: Package the TypeScript for distribution
 
    ```bash
-   npm run bundle
+   npm run build
    ```
 
 1. :white_check_mark: Run the tests
@@ -88,11 +88,11 @@ To make a change:
 1. Create a new branch
 
    ```bash
-   git checkout -b releases/v1
+   git checkout -b new-feature
    ```
 
-1. Replace the contents of `src/` with your action code
-1. Add tests to `__tests__/` for your source code
+1. Add or modify the code in `src/`
+1. Add or update the tests in `__tests__/`
 1. Format, test, and build the action
 
    ```bash
@@ -112,19 +112,17 @@ To make a change:
 
    ```bash
    git add .
-   git commit -m "My first action is ready!"
+   git commit -m "Added a new feature"
    ```
 
 1. Push them to your repository
 
    ```bash
-   git push -u origin releases/v1
+   git push -u origin new-feature
    ```
 
 1. Create a pull request and get feedback on your action
 1. Merge the pull request into the `main` branch
-
-Your action is now published! :rocket:
 
 For information about versioning your action, see
 [Versioning](https://github.com/actions/toolkit/blob/master/docs/action-versioning.md)

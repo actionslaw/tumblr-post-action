@@ -1,7 +1,8 @@
-import { InvalidField, Validate, ValidationsFailed } from '../src/validate'
+import { InvalidField, Store, ValidationsFailed } from '../src/validate'
+import * as Validate from '../src/validate'
 
-const fullStore = (field: string) => Promise.resolve(field)
-const emptyStore = (_: string) => Promise.resolve(undefined)
+const fullStore: Store = async (field: string) => Promise.resolve(field)
+const emptyStore: Store = async () => Promise.resolve(undefined)
 
 describe('Validate', () => {
   describe('required validator', () => {

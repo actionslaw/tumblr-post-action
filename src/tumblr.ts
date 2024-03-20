@@ -1,3 +1,5 @@
+import { Logger } from './logger'
+
 export interface TumblrConfig {
   consumerKey: string
   consumerSecret: string
@@ -7,10 +9,14 @@ export interface TumblrConfig {
 
 export class Tumblr {
   private readonly config: TumblrConfig
+  private readonly logger: Logger
 
-  constructor(config: TumblrConfig) {
+  constructor(config: TumblrConfig, logger: Logger) {
     this.config = config
+    this.logger = logger
   }
 
-  async post(text: string): Promise<void> {}
+  async post(text: string): Promise<void> {
+    await this.logger.info(text)
+  }
 }

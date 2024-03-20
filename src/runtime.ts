@@ -5,5 +5,6 @@ export interface Runtime {
 }
 
 export const GithubActionsRuntime = new (class implements Runtime {
-  inputs = (key: string) => Promise.resolve(core.getInput(key))
+  inputs = async (key: string): Promise<string | undefined> =>
+    Promise.resolve(core.getInput(key))
 })()

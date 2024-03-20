@@ -1,6 +1,6 @@
 import { Runtime, GithubActionsRuntime } from './runtime'
 import { Logger, GithubActionsLogger } from './logger'
-import { Validate } from './validate'
+import * as Validate from './validate'
 import { Tumblr, TumblrConfig } from './tumblr'
 
 export class PostTumblrAction {
@@ -15,7 +15,7 @@ export class PostTumblrAction {
     this.logger = logger
   }
 
-  async run() {
+  async run(): Promise<void> {
     const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] =
       await Validate.checkAll<string>([
         Validate.required('consumer-key')(this.runtime.inputs),
@@ -32,7 +32,7 @@ export class PostTumblrAction {
       accessTokenSecret
     }
 
-    const tumblr = new Tumblr(config)
+    const tumblr = new Tumblr(config, this.logger)
 
     await this.logger.info(`🥃 Sending post [${text}]`)
     await tumblr.post(text)
