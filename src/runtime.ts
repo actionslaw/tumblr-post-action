@@ -1,10 +1,11 @@
 import * as core from '@actions/core'
+import { Kind, URIS } from 'fp-ts/lib/HKT'
+import * as IO from 'fp-ts/IO'
 
-export interface Runtime {
-  readonly inputs: (key: string) => Promise<string | undefined>
+export interface Runtime<F extends URIS> {
+  readonly inputs: (key: string) => Kind<F, string | undefined>
 }
 
-export const GithubActionsRuntime = new (class implements Runtime {
-  inputs = async (key: string): Promise<string | undefined> =>
-    Promise.resolve(core.getInput(key))
-})()
+export const GithubActionsRuntime: Runtime<IO.URI> = {
+  inputs: (key: string) => () => core.getInput(key)
+}

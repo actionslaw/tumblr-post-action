@@ -1,74 +1,54 @@
-import { InvalidField, Store, ValidationsFailed } from '../src/validate'
+import { InvalidField, ValidationsFailed } from '../src/validate'
 import * as Validate from '../src/validate'
+import '@relmify/jest-fp-ts'
 
-const fullStore: Store = async (field: string) => Promise.resolve(field)
-const emptyStore: Store = async () => Promise.resolve(undefined)
-
-describe('Validate', () => {
-  describe('required validator', () => {
-    const maybeValid = Validate.required('test-key')(fullStore)
-    const maybeInValid = Validate.required('test-key')(emptyStore)
-
-    it('validates required field', async () => {
-      await expect(maybeValid).resolves.toBe('test-key')
-    })
-
-    it('throws validation error on missing field', async () => {
-      await expect(maybeInValid).rejects.toBeInstanceOf(InvalidField)
-    })
-
-    it('throws error with invalidation metadata', async () => {
-      await expect(maybeInValid).rejects.toEqual(
-        expect.objectContaining({ field: 'test-key', code: 'missing' })
-      )
-    })
+describe('Validate.required', () => {
+  it('validates required field', () => {
+    const validated = Validate.required('field', 'test-input')
+    expect(validated).toEqualRight('test-input')
   })
 
-  describe('check all validator', () => {
-    const maybeValid = Validate.checkAll([
-      Validate.required('test-key-1')(fullStore),
-      Validate.required('test-key-2')(fullStore)
+  it('returns invalid on missing required field', () => {
+    const expectedError = new InvalidField('field', 'missing')
+
+    const validated = Validate.required('field', undefined)
+
+    expect(validated).toStrictEqualLeft(expectedError)
+  })
+})
+
+describe('Validate.all', () => {
+  it('validates all required field', () => {
+    const validated = Validate.all([
+      Validate.required('field1', 'test-key-1'),
+      Validate.required('field2', 'test-key-2')
     ])
 
-    const maybeInValid = Validate.checkAll([
-      Validate.required('test-key-1')(emptyStore),
-      Validate.required('test-key-2')(emptyStore)
+    expect(validated).toStrictEqualRight(['test-key-1', 'test-key-2'])
+  })
+
+  it('return invalid when validations fail', () => {
+    const expectedErrors = [
+      new InvalidField('field1', 'missing'),
+      new InvalidField('field2', 'missing')
+    ]
+
+    const validated = Validate.all([
+      Validate.required('field1', undefined),
+      Validate.required('field2', undefined)
     ])
 
-    it('validates all required field', async () => {
-      await expect(maybeValid).resolves.toStrictEqual([
-        'test-key-1',
-        'test-key-2'
-      ])
-    })
+    expect(validated).toStrictEqualLeft(new ValidationsFailed(expectedErrors))
+  })
 
-    it('throws validation error when all fields are invalid', async () => {
-      await expect(maybeInValid).rejects.toBeInstanceOf(ValidationsFailed)
-    })
+  it('return invalid when some validations fail', () => {
+    const expectedErrors = [new InvalidField('field1', 'missing')]
 
-    it('throws error with invalidation metadata', async () => {
-      await expect(maybeInValid).rejects.toEqual(
-        expect.objectContaining({
-          errors: expect.arrayContaining([expect.any(InvalidField)])
-        })
-      )
-    })
-
-    const maybeSomeValid = Validate.checkAll([
-      Validate.required('test-key-1')(emptyStore),
-      Validate.required('test-key-2')(fullStore)
+    const validated = Validate.all([
+      Validate.required('field1', undefined),
+      Validate.required('field2', 'test-input')
     ])
 
-    it('throws validation error when some fields are invalid', async () => {
-      await expect(maybeSomeValid).rejects.toBeInstanceOf(ValidationsFailed)
-    })
-
-    it('throws error with invalidation metadata when some fields are invlaid', async () => {
-      await expect(maybeSomeValid).rejects.toEqual(
-        expect.objectContaining({
-          errors: expect.arrayContaining([expect.any(InvalidField)])
-        })
-      )
-    })
+    expect(validated).toStrictEqualLeft(new ValidationsFailed(expectedErrors))
   })
 })

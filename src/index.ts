@@ -1,6 +1,11 @@
 import { PostTumblrAction } from './action'
+import { GithubActionsLogger } from './logger'
+import { GithubActionsRuntime } from './runtime'
+import * as IO from 'fp-ts/IO'
 
-const action = new PostTumblrAction()
+const action = new PostTumblrAction<IO.URI>(
+  GithubActionsLogger,
+  GithubActionsRuntime
+)
 
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-action.run()
+action.run(IO.Monad)()

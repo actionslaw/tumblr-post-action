@@ -1,3 +1,8 @@
+import * as A from 'fp-ts/Array'
+import * as E from 'fp-ts/Either'
+
+export type Validated<T> = E.Either<InvalidField, T>
+
 export class InvalidField extends Error {
   readonly field: string
   readonly code: string
@@ -18,45 +23,23 @@ export class ValidationsFailed extends Error {
     super(message)
     this.errors = errors
   }
-}
 
-export type Store = (field: string) => Promise<string | undefined>
-
-export function required(field: string): (_: Store) => Promise<string> {
-  return async (store: Store): Promise<string> => {
-    const valid = await store(field)
-    if (valid) return valid
-    else return Promise.reject(new InvalidField(field, 'missing'))
+  static from<T>(errors: InvalidField[]): E.Either<ValidationsFailed, T[]> {
+    return E.left(new ValidationsFailed(errors))
   }
 }
 
-export async function checkAll<A>(validations: Promise<A>[]): Promise<A[]> {
-  const results = await Promise.allSettled(validations)
-  const successful = results.map(fulfilled).filter((item): item is A => !!item)
-
-  const failed = results.map(rejected).filter(item => !!item)
-
-  const validationFailed = failed
-    .filter(e => e instanceof InvalidField)
-    .filter((e): e is InvalidField => !!e)
-
-  if (failed.length > 0) throw new ValidationsFailed(validationFailed)
-
-  // TODO handle non-validation errors
-
-  return successful
+export function required<T>(field: string, input: T | undefined): Validated<T> {
+  if (input) return E.right(input)
+  else return E.left(new InvalidField(field, 'missing'))
 }
 
-function fulfilled<A>(result: PromiseSettledResult<Awaited<A>>): A | undefined {
-  if (result.status === 'fulfilled') {
-    return result.value
-  }
-}
+export function all<T>(
+  validations: Validated<T>[]
+): E.Either<ValidationsFailed, T[]> {
+  const separated = A.separate(validations)
+  const errors = separated.left
 
-function rejected<A, E>(
-  result: PromiseSettledResult<Awaited<A>>
-): E | undefined {
-  if (result.status === 'rejected') {
-    return result.reason as E | undefined
-  }
+  if (A.isNonEmpty(errors)) return ValidationsFailed.from(errors)
+  else return E.right(separated.right)
 }

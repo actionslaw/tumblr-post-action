@@ -1,42 +1,46 @@
-import { Runtime, GithubActionsRuntime } from './runtime'
-import { Logger, GithubActionsLogger } from './logger'
-import * as Validate from './validate'
-import { Tumblr, TumblrConfig } from './tumblr'
+import { Runtime } from './runtime'
+import { Logger } from './logger'
+// import * as Validate from './validate'
+// import { Tumblr, TumblrConfig } from './tumblr'
+import { Kind, URIS } from 'fp-ts/lib/HKT'
+import { Monad1 } from 'fp-ts/lib/Monad'
+// import { flow } from 'fp-ts/function'
 
-export class PostTumblrAction {
-  private readonly runtime: Runtime
-  private readonly logger: Logger
+export class PostTumblrAction<F extends URIS> {
+  private readonly runtime: Runtime<F>
+  private readonly logger: Logger<F>
 
-  constructor(
-    runtime: Runtime = GithubActionsRuntime,
-    logger: Logger = GithubActionsLogger
-  ) {
-    this.runtime = runtime
+  constructor(logger: Logger<F>, runtime: Runtime<F>) {
     this.logger = logger
+    this.runtime = runtime
   }
 
-  async run(): Promise<void> {
-    const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] =
-      await Validate.checkAll<string>([
-        Validate.required('consumer-key')(this.runtime.inputs),
-        Validate.required('consumer-secret')(this.runtime.inputs),
-        Validate.required('access-token')(this.runtime.inputs),
-        Validate.required('access-token-secret')(this.runtime.inputs),
-        Validate.required('text')(this.runtime.inputs)
-      ])
+  run(M: Monad1<F>): Kind<F, void> {
+    // const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] =
+    //   await Validate.checkAll<string>([
+    //     Validate.required('consumer-key')(this.runtime.inputs),
+    //     Validate.required('consumer-secret')(this.runtime.inputs),
+    //     Validate.required('access-token')(this.runtime.inputs),
+    //     Validate.required('access-token-secret')(this.runtime.inputs),
+    //     Validate.required('text')(this.runtime.inputs)
+    //   ])
 
-    const config: TumblrConfig = {
-      consumerKey,
-      consumerSecret,
-      accessToken,
-      accessTokenSecret
-    }
+    // const config: TumblrConfig = {
+    //   consumerKey,
+    //   consumerSecret,
+    //   accessToken,
+    //   accessTokenSecret
+    // }
 
-    const tumblr = new Tumblr(config, this.logger)
+    // const tumblr = new Tumblr(config, this.logger)
 
-    await this.logger.info(`🥃 Sending post [${text}]`)
-    await tumblr.post(text)
+    // await this.logger.info(`🥃 Sending post [${text}]`)
+    // await tumblr.post(text)
 
-    console.log(tumblr)
+    return M.chain(this.runtime.inputs('consumer-key'), this.logger.info)
+    // return flow(
+    //   this.runtime.inputs('consumer-key'),
+    //   this.logger.info
+    // )
   }
 }
