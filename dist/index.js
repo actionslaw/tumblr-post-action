@@ -39537,9 +39537,11 @@ class PostTumblrAction {
         //   this.runtime.inputs('consumer-key'),
         //   Validate.requiredF(M, 'consumer-key')
         // )
-        const maybeConsumerKey = this.runtime.inputs('consumer-key');
-        const x = M.chain(maybeConsumerKey, key => Validate.requiredF(M, 'consumer-key', key));
-        return M.chain(x, this.logger.info);
+        // M.chain
+        // const x = this.runtime
+        //   .inputs('consumer-key')
+        //   .chain(key => Validate.requiredF(M, 'consumer-key', key))
+        return M.chain(M.chain(this.runtime.inputs('consumer-key'), Validate.requiredF(M, 'consumer-key')), this.logger.info);
     };
 }
 exports.PostTumblrAction = PostTumblrAction;
@@ -39764,10 +39766,6 @@ class ValidationsFailed extends Error {
     }
 }
 exports.ValidationsFailed = ValidationsFailed;
-// type Validator<S, T> = (field: string, input: S) => Validated<T>
-// type ValidatorF<F extends URIS, S, T> = (
-//   inputF: Kind<F, S>
-// ) => (s: string) => Kind<F, T>
 function required(field, input) {
     if (input)
         return E.right(input);
@@ -39775,30 +39773,13 @@ function required(field, input) {
         return E.left(new InvalidField(field, 'missing'));
 }
 exports.required = required;
-function requiredF(M, field, input) {
-    return E.match((err) => M.throwError(err), (head) => M.of(head))(required(field, input));
+function lift(M) {
+    return E.match((err) => M.throwError(err), (head) => M.of(head));
+}
+function requiredF(M, field) {
+    return (input) => lift(M)(required(field, input));
 }
 exports.requiredF = requiredF;
-// type ValidatedF<F extends URIS, S, T> = (_: Kind<F, S>) => Kind<F, T>
-// function fromEither<F extends URIS, A1>(
-//   M: MonadThrow<F>,
-//   either: E.Either<Error, A1>
-// ): Kind<F, A1> {
-//   return M.throwError<Error, A1>(new Error(''))
-// const matcher = E.match<E1, A1, Kind<F, A1>>(
-//   error => M.throwError<E1, A1>(error),
-//   result => M.of(result)
-// )
-// return matcher(either)
-// }
-// console.log(fromEither(IOEither.MonadThrow, E.left(new Error('')))
-// export function requiredF<F extends URIS, T>(
-//   M: MonadThrow<F>,
-//   field: string
-// ): ValidatedF<F, T | undefined, T> {
-//   return (input: Kind<F, T | undefined>) =>
-//     M.chain(input, i => M.throwError(new InvalidField(field, 'missing')))
-// }
 function all(validations) {
     const separated = A.separate(validations);
     const errors = separated.left;
@@ -39808,14 +39789,6 @@ function all(validations) {
         return E.right(separated.right);
 }
 exports.all = all;
-// export function lift<F extends URIS, S, T>(
-//   M: MonadThrow<F>,
-//   validator: Validator<S, T>
-// ): ValidatorF<F, S, T> {
-//   M.throwError
-//   return (inputF: Kind<F, S>) => (field: string, input: S) =>
-//     M.chain(inputF, M.fromEither(validator(field, input))
-// }
 
 
 /***/ }),

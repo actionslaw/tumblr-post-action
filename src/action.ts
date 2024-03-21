@@ -41,12 +41,18 @@ export class PostTumblrAction<F extends Effect.URIS> {
     //   Validate.requiredF(M, 'consumer-key')
     // )
 
-    const maybeConsumerKey = this.runtime.inputs('consumer-key')
+    // M.chain
 
-    const x = M.chain(maybeConsumerKey, key =>
-      Validate.requiredF(M, 'consumer-key', key)
+    // const x = this.runtime
+    //   .inputs('consumer-key')
+    //   .chain(key => Validate.requiredF(M, 'consumer-key', key))
+
+    return M.chain(
+      M.chain(
+        this.runtime.inputs('consumer-key'),
+        Validate.requiredF(M, 'consumer-key')
+      ),
+      this.logger.info
     )
-
-    return M.chain(x, this.logger.info)
   }
 }
