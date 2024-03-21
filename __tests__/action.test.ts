@@ -27,7 +27,7 @@ declare module 'fp-ts/HKT' {
   }
 }
 
-interface TestEffect<A> extends S.State<TestState, A> { }
+interface TestEffect<A> extends S.State<TestState, A> {}
 
 const TestEffectMonad: Monad1<URI> = {
   URI,
