@@ -1,11 +1,10 @@
 import * as core from '@actions/core'
-import { Kind, URIS } from 'fp-ts/lib/HKT'
-import * as IO from 'fp-ts/IO'
+import * as Effect from './effect'
 
-export interface Runtime<F extends URIS> {
-  readonly inputs: (key: string) => Kind<F, string | undefined>
+export interface Runtime<F extends Effect.URIS> {
+  readonly inputs: (key: string) => Effect.Kind<F, string | undefined>
 }
 
-export const GithubActionsRuntime: Runtime<IO.URI> = {
-  inputs: (key: string) => () => core.getInput(key)
+export const GithubActionsRuntime: Runtime<Effect.URI> = {
+  inputs: (key: string) => Effect.tryCatch(() => core.getInput(key))
 }

@@ -1,12 +1,11 @@
 import { Runtime } from './runtime'
 import { Logger } from './logger'
-// import * as Validate from './validate'
+import * as Validate from './validate'
 // import { Tumblr, TumblrConfig } from './tumblr'
-import { Kind, URIS } from 'fp-ts/lib/HKT'
-import { Monad1 } from 'fp-ts/lib/Monad'
-// import { flow } from 'fp-ts/function'
+// import { pipe } from 'fp-ts/function'
+import * as Effect from './effect'
 
-export class PostTumblrAction<F extends URIS> {
+export class PostTumblrAction<F extends Effect.URIS> {
   private readonly runtime: Runtime<F>
   private readonly logger: Logger<F>
 
@@ -15,7 +14,7 @@ export class PostTumblrAction<F extends URIS> {
     this.runtime = runtime
   }
 
-  run(M: Monad1<F>): Kind<F, void> {
+  program: Effect.Program<F> = (M: Effect.MonadThrow<F>) => {
     // const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] =
     //   await Validate.checkAll<string>([
     //     Validate.required('consumer-key')(this.runtime.inputs),
@@ -37,10 +36,17 @@ export class PostTumblrAction<F extends URIS> {
     // await this.logger.info(`🥃 Sending post [${text}]`)
     // await tumblr.post(text)
 
-    return M.chain(this.runtime.inputs('consumer-key'), this.logger.info)
-    // return flow(
+    // return M.chain(
     //   this.runtime.inputs('consumer-key'),
-    //   this.logger.info
+    //   Validate.requiredF(M, 'consumer-key')
     // )
+
+    const maybeConsumerKey = this.runtime.inputs('consumer-key')
+
+    const x = M.chain(maybeConsumerKey, key =>
+      Validate.requiredF(M, 'consumer-key', key)
+    )
+
+    return M.chain(x, this.logger.info)
   }
 }

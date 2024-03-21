@@ -1,12 +1,10 @@
 import * as core from '@actions/core'
-import { Kind, URIS } from 'fp-ts/lib/HKT'
-import * as IO from 'fp-ts/IO'
+import * as Effect from './effect'
 
-export interface Logger<F extends URIS> {
-  info: (_: string | undefined) => Kind<F, void>
+export interface Logger<F extends Effect.URIS> {
+  info: (_: string) => Effect.Kind<F, void>
 }
 
-export const GithubActionsLogger: Logger<IO.URI> = {
-  info: (message: string | undefined) => () =>
-    message ? core.info(message) : undefined
+export const GithubActionsLogger: Logger<Effect.URI> = {
+  info: (message: string) => Effect.tryCatch(() => core.info(message))
 }
