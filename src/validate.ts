@@ -1,4 +1,3 @@
-import * as A from 'fp-ts/Array'
 import * as E from 'fp-ts/Either'
 import * as Effect from './effect'
 
@@ -12,21 +11,6 @@ export class InvalidField extends Error {
     super(`Field ${field} invalid (${code})`)
     this.field = field
     this.code = code
-  }
-}
-
-export class ValidationsFailed extends Error {
-  readonly errors: InvalidField[]
-
-  constructor(errors: InvalidField[]) {
-    const header = 'Validation failed with the following errors:'
-    const message = [header].concat(errors.map(e => e.message)).join('\n\t')
-    super(message)
-    this.errors = errors
-  }
-
-  static from<T>(errors: InvalidField[]): E.Either<ValidationsFailed, T[]> {
-    return E.left(new ValidationsFailed(errors))
   }
 }
 
@@ -49,14 +33,4 @@ export function requiredF<F extends Effect.URIS, T>(
   field: string
 ): (_: T | undefined) => Effect.Kind<F, T> {
   return (input: T | undefined) => lift<F, T>(M)(required(field, input))
-}
-
-export function all<T>(
-  validations: Validated<T>[]
-): E.Either<ValidationsFailed, T[]> {
-  const separated = A.separate(validations)
-  const errors = separated.left
-
-  if (A.isNonEmpty(errors)) return ValidationsFailed.from(errors)
-  else return E.right(separated.right)
 }

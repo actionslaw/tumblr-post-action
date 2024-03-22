@@ -1,22 +1,17 @@
-// import { Logger } from './logger'
+import * as Effect from './effect'
 
-// export interface TumblrConfig {
-//   consumerKey: string
-//   consumerSecret: string
-//   accessToken: string
-//   accessTokenSecret: string
-// }
+export interface Config {
+  consumerKey: string
+  consumerSecret: string
+  accessToken: string
+  accessTokenSecret: string
+}
 
-// export class Tumblr {
-//   private readonly config: TumblrConfig
-//   private readonly logger: Logger
+export interface Interface<F extends Effect.URIS> {
+  readonly post: (config: Config, text: string) => Effect.Kind<F, void>
+}
 
-//   constructor(config: TumblrConfig, logger: Logger) {
-//     this.config = config
-//     this.logger = logger
-//   }
-
-//   async post(text: string): Promise<void> {
-//     await this.logger.info(text)
-//   }
-// }
+export const TumblrJs: Interface<Effect.URI> = {
+  post: (config: Config, text: string) =>
+    Effect.tryCatch(() => console.log(text))
+}

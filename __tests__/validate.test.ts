@@ -1,4 +1,4 @@
-import { InvalidField, ValidationsFailed } from '../src/validate'
+import { InvalidField } from '../src/validate'
 import * as Validate from '../src/validate'
 import { Effect } from '../src/effect'
 import '@relmify/jest-fp-ts'
@@ -22,41 +22,5 @@ describe('Validate.requiredF', () => {
   it('validates required field', () => {
     const validated = Validate.requiredF(Effect, 'field')('test-input')()
     expect(validated).toEqualRight('test-input')
-  })
-})
-
-describe('Validate.all', () => {
-  it('validates all required field', () => {
-    const validated = Validate.all([
-      Validate.required('field1', 'test-key-1'),
-      Validate.required('field2', 'test-key-2')
-    ])
-
-    expect(validated).toStrictEqualRight(['test-key-1', 'test-key-2'])
-  })
-
-  it('return invalid when validations fail', () => {
-    const expectedErrors = [
-      new InvalidField('field1', 'missing'),
-      new InvalidField('field2', 'missing')
-    ]
-
-    const validated = Validate.all([
-      Validate.required('field1', undefined),
-      Validate.required('field2', undefined)
-    ])
-
-    expect(validated).toStrictEqualLeft(new ValidationsFailed(expectedErrors))
-  })
-
-  it('return invalid when some validations fail', () => {
-    const expectedErrors = [new InvalidField('field1', 'missing')]
-
-    const validated = Validate.all([
-      Validate.required('field1', undefined),
-      Validate.required('field2', 'test-input')
-    ])
-
-    expect(validated).toStrictEqualLeft(new ValidationsFailed(expectedErrors))
   })
 })

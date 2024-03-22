@@ -4,18 +4,16 @@ import * as S from 'fp-ts-contrib/lib/StateEither'
 import { Logger } from '../src/logger'
 import { Runtime } from '../src/runtime'
 import { MonadThrow2 } from 'fp-ts/lib/MonadThrow'
+import * as O from 'fp-ts/Option'
+import * as Tumblr from '../src/tumblr'
+
 import '@relmify/jest-fp-ts'
 
 interface TestState {
-  logs: string[]
   inputs: Record<string, string>
-}
-
-const initialState: TestState = {
-  logs: [],
-  inputs: {
-    'consumer-key': 'consumer-key-value'
-  }
+  logs: string[]
+  config: O.Option<Tumblr.Config>
+  posts: string[]
 }
 
 const URI = 'TestEffect'
@@ -45,18 +43,35 @@ const log = (message: string | undefined, s: TestState): TestState => {
 }
 
 const TestLogger: Logger<URI> = {
-  info: (message: string | undefined) =>
-    S.modify<TestState>(s => log(message, s))
+  info: (message: string) => S.modify<TestState>(s => log(message, s))
 }
 
 const TestRuntime: Runtime<URI> = {
-  inputs: (key: string) =>
-    S.gets<TestState, Error, string | undefined>(s => s.inputs[key])
+  inputs: (key: string) => S.gets(s => s.inputs[key])
+}
+
+const TestTumblr: Tumblr.Interface<URI> = {
+  post: (config: Tumblr.Config, text: string) => {
+    return S.modify<TestState>(s => {
+      const update = { posts: [...s.posts, text], config: O.some(config) }
+      return Object.assign(update, s)
+    })
+  }
 }
 
 type TestProgram = TestEffect<Error, void>
 
-function run(program: TestProgram): Either.Either<Error, TestState> {
+function run(
+  program: TestProgram,
+  inputs?: Record<string, string>
+): Either.Either<Error, TestState> {
+  const initialState: TestState = {
+    inputs: inputs ? inputs : {},
+    logs: [],
+    config: O.none,
+    posts: []
+  }
+
   const maybeRun = program(initialState)
   const state = Either.map<[void, TestState], TestState>(r => {
     const [, s] = r
@@ -73,10 +88,10 @@ function optics<A>(
 }
 
 describe('PostTumblrAction', () => {
-  const action = new PostTumblrAction<URI>(TestLogger, TestRuntime)
+  const action = new PostTumblrAction<URI>(TestLogger, TestRuntime, TestTumblr)
 
-  it('logs', () => {
-    const state = run(action.program(MonadThrow))
-    expect(optics(state, s => s.logs)).toEqualRight(['consumer-key-value'])
+  it('post to tumblr', () => {
+    const state = run(action.program(MonadThrow), { text: 'test-post' })
+    expect(optics(state, s => s.posts)).toEqualRight(['test-post'])
   })
 })

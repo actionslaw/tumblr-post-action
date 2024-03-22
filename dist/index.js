@@ -39507,40 +39507,41 @@ var __importStar = (this && this.__importStar) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PostTumblrAction = void 0;
+const A = __importStar(__nccwpck_require__(3834));
 const Validate = __importStar(__nccwpck_require__(4953));
 class PostTumblrAction {
     runtime;
     logger;
-    constructor(logger, runtime) {
+    tumblr;
+    constructor(logger, runtime, tumblr) {
         this.logger = logger;
         this.runtime = runtime;
+        this.tumblr = tumblr;
+    }
+    requiredInput(M, key) {
+        return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key));
     }
     program = (M) => {
-        // const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] =
-        //   await Validate.checkAll<string>([
-        //     Validate.required('consumer-key')(this.runtime.inputs),
-        //     Validate.required('consumer-secret')(this.runtime.inputs),
-        //     Validate.required('access-token')(this.runtime.inputs),
-        //     Validate.required('access-token-secret')(this.runtime.inputs),
-        //     Validate.required('text')(this.runtime.inputs)
-        //   ])
-        // const config: TumblrConfig = {
-        //   consumerKey,
-        //   consumerSecret,
-        //   accessToken,
-        //   accessTokenSecret
-        // }
         // const tumblr = new Tumblr(config, this.logger)
         // await this.logger.info(`🥃 Sending post [${text}]`)
         // await tumblr.post(text)
-        // return M.chain(
-        //   this.runtime.inputs('consumer-key'),
-        //   Validate.requiredF(M, 'consumer-key')
-        // )
-        // M.chain
-        // const x = this.runtime
-        //   .inputs('consumer-key')
-        //   .chain(key => Validate.requiredF(M, 'consumer-key', key))
+        const maybeInputs = A.sequence(M)([
+            this.requiredInput(M, 'consumer-key'),
+            this.requiredInput(M, 'consumer-secret'),
+            this.requiredInput(M, 'access - token'),
+            this.requiredInput(M, 'access-token-secret')
+        ]);
+        const maybeConfig = M.map(maybeInputs, inputs => {
+            const [consumerKey, consumerSecret, accessToken, accessTokenSecret] = inputs;
+            const config = {
+                consumerKey,
+                consumerSecret,
+                accessToken,
+                accessTokenSecret
+            };
+            return config;
+        });
+        console.log(maybeConfig);
         return M.chain(M.chain(this.runtime.inputs('consumer-key'), Validate.requiredF(M, 'consumer-key')), this.logger.info);
     };
 }
@@ -39578,18 +39579,17 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.run = exports.Effect = exports.tryCatch = void 0;
-const E = __importStar(__nccwpck_require__(7534));
-const IOEither = __importStar(__nccwpck_require__(119));
+exports.runSync = exports.Effect = exports.tryCatch = void 0;
+const IOE = __importStar(__nccwpck_require__(119));
 function tryCatch(io) {
-    return () => E.tryCatch(() => io(), e => (e instanceof Error ? e : new Error(`unknown error ${e}`)));
+    return IOE.tryCatch(() => io(), e => (e instanceof Error ? e : new Error(`unknown error ${e}`)));
 }
 exports.tryCatch = tryCatch;
-exports.Effect = IOEither.MonadThrow;
-function run(program) {
-    E.throwError(program(exports.Effect)());
+exports.Effect = IOE.MonadThrow;
+function runSync(program) {
+    IOE.throwError(program(exports.Effect)());
 }
-exports.run = run;
+exports.runSync = runSync;
 
 
 /***/ }),
@@ -39626,9 +39626,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const action_1 = __nccwpck_require__(7672);
 const logger_1 = __nccwpck_require__(4636);
 const runtime_1 = __nccwpck_require__(7073);
+const tumblr_1 = __nccwpck_require__(8537);
 const Effect = __importStar(__nccwpck_require__(8568));
-const action = new action_1.PostTumblrAction(logger_1.GithubActionsLogger, runtime_1.GithubActionsRuntime);
-Effect.run(action.program);
+const action = new action_1.PostTumblrAction(logger_1.GithubActionsLogger, runtime_1.GithubActionsRuntime, tumblr_1.TumblrJs);
+Effect.runSync(action.program);
 
 
 /***/ }),
@@ -39711,6 +39712,55 @@ exports.GithubActionsRuntime = {
 
 /***/ }),
 
+/***/ 8537:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TumblrJs = void 0;
+const Effect = __importStar(__nccwpck_require__(8568));
+exports.TumblrJs = {
+    post: (config, text) => Effect.tryCatch(() => console.log(text))
+};
+// export class Tumblr {
+//   private readonly config: TumblrConfig
+//   private readonly logger: Logger
+//   constructor(config: TumblrConfig, logger: Logger) {
+//     this.config = config
+//     this.logger = logger
+//   }
+//   async post(text: string): Promise<void> {
+//     await this.logger.info(text)
+//   }
+// }
+
+
+/***/ }),
+
 /***/ 4953:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -39740,8 +39790,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.all = exports.requiredF = exports.required = exports.ValidationsFailed = exports.InvalidField = void 0;
-const A = __importStar(__nccwpck_require__(3834));
+exports.requiredF = exports.required = exports.InvalidField = void 0;
 const E = __importStar(__nccwpck_require__(7534));
 class InvalidField extends Error {
     field;
@@ -39753,19 +39802,6 @@ class InvalidField extends Error {
     }
 }
 exports.InvalidField = InvalidField;
-class ValidationsFailed extends Error {
-    errors;
-    constructor(errors) {
-        const header = 'Validation failed with the following errors:';
-        const message = [header].concat(errors.map(e => e.message)).join('\n\t');
-        super(message);
-        this.errors = errors;
-    }
-    static from(errors) {
-        return E.left(new ValidationsFailed(errors));
-    }
-}
-exports.ValidationsFailed = ValidationsFailed;
 function required(field, input) {
     if (input)
         return E.right(input);
@@ -39780,15 +39816,6 @@ function requiredF(M, field) {
     return (input) => lift(M)(required(field, input));
 }
 exports.requiredF = requiredF;
-function all(validations) {
-    const separated = A.separate(validations);
-    const errors = separated.left;
-    if (A.isNonEmpty(errors))
-        return ValidationsFailed.from(errors);
-    else
-        return E.right(separated.right);
-}
-exports.all = all;
 
 
 /***/ }),
