@@ -39509,6 +39509,8 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PostTumblrAction = void 0;
 const A = __importStar(__nccwpck_require__(3834));
 const Validate = __importStar(__nccwpck_require__(4953));
+const Effect = __importStar(__nccwpck_require__(8568));
+const function_1 = __nccwpck_require__(6985);
 class PostTumblrAction {
     runtime;
     logger;
@@ -39521,29 +39523,22 @@ class PostTumblrAction {
     requiredInput(M, key) {
         return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key));
     }
-    program = (M) => {
-        // const tumblr = new Tumblr(config, this.logger)
-        // await this.logger.info(`🥃 Sending post [${text}]`)
-        // await tumblr.post(text)
-        const maybeInputs = A.sequence(M)([
-            this.requiredInput(M, 'consumer-key'),
-            this.requiredInput(M, 'consumer-secret'),
-            this.requiredInput(M, 'access - token'),
-            this.requiredInput(M, 'access-token-secret')
-        ]);
-        const maybeConfig = M.map(maybeInputs, inputs => {
-            const [consumerKey, consumerSecret, accessToken, accessTokenSecret] = inputs;
-            const config = {
-                consumerKey,
-                consumerSecret,
-                accessToken,
-                accessTokenSecret
-            };
-            return config;
-        });
-        console.log(maybeConfig);
-        return M.chain(M.chain(this.runtime.inputs('consumer-key'), Validate.requiredF(M, 'consumer-key')), this.logger.info);
-    };
+    program = (M) => (0, function_1.pipe)(A.sequence(M)([
+        this.requiredInput(M, 'consumer-key'),
+        this.requiredInput(M, 'consumer-secret'),
+        this.requiredInput(M, 'access-token'),
+        this.requiredInput(M, 'access-token-secret'),
+        this.requiredInput(M, 'text')
+    ]), maybeInputs => M.chain(M.chain(M.map(maybeInputs, inputs => {
+        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, text] = inputs;
+        const config = {
+            consumerKey,
+            consumerSecret,
+            accessToken,
+            accessTokenSecret
+        };
+        return [config, text];
+    }), Effect.M.tap(M, ([, text]) => this.logger.info('🥃 sending tumblr post', { text }))), ([config, text]) => this.tumblr.post(config, text)));
 }
 exports.PostTumblrAction = PostTumblrAction;
 
@@ -39579,13 +39574,21 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runSync = exports.Effect = exports.tryCatch = void 0;
+exports.runSync = exports.M = exports.Effect = exports.tryCatch = void 0;
 const IOE = __importStar(__nccwpck_require__(119));
 function tryCatch(io) {
     return IOE.tryCatch(() => io(), e => (e instanceof Error ? e : new Error(`unknown error ${e}`)));
 }
 exports.tryCatch = tryCatch;
 exports.Effect = IOE.MonadThrow;
+const tap = (MT, f) => {
+    return tapped => {
+        return MT.chain(f(tapped), () => MT.of(tapped));
+    };
+};
+exports.M = {
+    tap
+};
 function runSync(program) {
     IOE.throwError(program(exports.Effect)());
 }
@@ -39628,7 +39631,7 @@ const logger_1 = __nccwpck_require__(4636);
 const runtime_1 = __nccwpck_require__(7073);
 const tumblr_1 = __nccwpck_require__(8537);
 const Effect = __importStar(__nccwpck_require__(8568));
-const action = new action_1.PostTumblrAction(logger_1.GithubActionsLogger, runtime_1.GithubActionsRuntime, tumblr_1.TumblrJs);
+const action = new action_1.PostTumblrAction(logger_1.GithubActionsLogger, runtime_1.GithubActionsRuntime, new tumblr_1.TumblrJs());
 Effect.runSync(action.program);
 
 
@@ -39667,7 +39670,10 @@ exports.GithubActionsLogger = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const Effect = __importStar(__nccwpck_require__(8568));
 exports.GithubActionsLogger = {
-    info: (message) => Effect.tryCatch(() => core.info(message))
+    info: (message, data) => {
+        const segments = Object.entries(data).map(([key, value]) => `${key}=[${value}]`);
+        return Effect.tryCatch(() => core.info([message, ...segments].join(' ')));
+    }
 };
 
 
@@ -39743,20 +39749,12 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TumblrJs = void 0;
 const Effect = __importStar(__nccwpck_require__(8568));
-exports.TumblrJs = {
-    post: (config, text) => Effect.tryCatch(() => console.log(text))
-};
-// export class Tumblr {
-//   private readonly config: TumblrConfig
-//   private readonly logger: Logger
-//   constructor(config: TumblrConfig, logger: Logger) {
-//     this.config = config
-//     this.logger = logger
-//   }
-//   async post(text: string): Promise<void> {
-//     await this.logger.info(text)
-//   }
-// }
+class TumblrJs {
+    post(config, text) {
+        return Effect.tryCatch(() => console.log(text, { text }));
+    }
+}
+exports.TumblrJs = TumblrJs;
 
 
 /***/ }),

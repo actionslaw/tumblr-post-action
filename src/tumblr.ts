@@ -11,7 +11,8 @@ export interface Interface<F extends Effect.URIS> {
   readonly post: (config: Config, text: string) => Effect.Kind<F, void>
 }
 
-export const TumblrJs: Interface<Effect.URI> = {
-  post: (config: Config, text: string) =>
-    Effect.tryCatch(() => console.log(text))
+export class TumblrJs implements Interface<Effect.URI> {
+  post(config: Config, text: string): Effect.Kind<Effect.URI, void> {
+    return Effect.tryCatch(() => console.log(text, { text }))
+  }
 }

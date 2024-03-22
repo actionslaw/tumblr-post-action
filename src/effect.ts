@@ -20,7 +20,20 @@ export const Effect = IOE.MonadThrow
 
 export type MonadThrow<F extends URIS> = MonadThrow2<F>
 
-export type Program<F extends URIS> = (M: MonadThrow<F>) => Kind<F, void>
+const tap: <F extends URIS, T>(
+  MT: MonadThrow<F>,
+  f: (_: T) => Kind<F, void>
+) => (tapped: T) => Kind<F, T> = (MT, f) => {
+  return tapped => {
+    return MT.chain(f(tapped), () => MT.of(tapped))
+  }
+}
+
+export const M = {
+  tap
+}
+
+export type Program<F extends URIS> = (MT: MonadThrow<F>) => Kind<F, void>
 
 type ProgramRunner = (_: MonadThrow<URI>) => () => E.Either<Error, void>
 

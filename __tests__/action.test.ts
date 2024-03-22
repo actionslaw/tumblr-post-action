@@ -11,7 +11,7 @@ import '@relmify/jest-fp-ts'
 
 interface TestState {
   inputs: Record<string, string>
-  logs: string[]
+  logs: [string, string][]
   config: O.Option<Tumblr.Config>
   posts: string[]
 }
@@ -38,12 +38,12 @@ const MonadThrow: MonadThrow2<URI> = {
   throwError: S.MonadThrow.throwError
 }
 
-const log = (message: string | undefined, s: TestState): TestState => {
-  return { logs: [...s.logs, message] } as TestState
-}
-
 const TestLogger: Logger<URI> = {
-  info: (message: string) => S.modify<TestState>(s => log(message, s))
+  info: (_: string, data: Record<string, string>) =>
+    S.modify<TestState>(s => {
+      const update = { logs: [...s.logs, ...Object.entries(data)] }
+      return Object.assign(s, update)
+    })
 }
 
 const TestRuntime: Runtime<URI> = {
@@ -54,7 +54,7 @@ const TestTumblr: Tumblr.Interface<URI> = {
   post: (config: Tumblr.Config, text: string) => {
     return S.modify<TestState>(s => {
       const update = { posts: [...s.posts, text], config: O.some(config) }
-      return Object.assign(update, s)
+      return Object.assign(s, update)
     })
   }
 }
@@ -87,11 +87,38 @@ function optics<A>(
   return Either.map(get)(state)
 }
 
+const config = {
+  'consumer-key': 'test-consumer-key',
+  'consumer-secret': 'test-consumer-secret',
+  'access-token': 'test-access-token',
+  'access-token-secret': 'test-access-token-secret'
+}
+
 describe('PostTumblrAction', () => {
   const action = new PostTumblrAction<URI>(TestLogger, TestRuntime, TestTumblr)
 
   it('post to tumblr', () => {
-    const state = run(action.program(MonadThrow), { text: 'test-post' })
+    const inputs = { text: 'test-post', ...config }
+    const state = run(action.program(MonadThrow), inputs)
     expect(optics(state, s => s.posts)).toEqualRight(['test-post'])
+  })
+
+  it('log post text', () => {
+    const inputs = { text: 'test-post', ...config }
+    const state = run(action.program(MonadThrow), inputs)
+    expect(optics(state, s => s.logs)).toEqualRight([['text', 'test-post']])
+  })
+
+  it('configure tumblr.js correctly', () => {
+    const inputs = { text: 'test-post', ...config }
+    const state = run(action.program(MonadThrow), inputs)
+    expect(optics(state, s => s.config)).toEqualRight(
+      O.some({
+        consumerKey: 'test-consumer-key',
+        consumerSecret: 'test-consumer-secret',
+        accessToken: 'test-access-token',
+        accessTokenSecret: 'test-access-token-secret'
+      } as Tumblr.Config)
+    )
   })
 })

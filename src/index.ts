@@ -7,7 +7,7 @@ import * as Effect from './effect'
 const action = new PostTumblrAction<Effect.URI>(
   GithubActionsLogger,
   GithubActionsRuntime,
-  TumblrJs
+  new TumblrJs()
 )
 
 Effect.runSync(action.program)

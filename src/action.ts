@@ -25,37 +25,41 @@ export class PostTumblrAction<F extends Effect.URIS> {
     return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key))
   }
 
-  program: Effect.Program<F> = (M: Effect.MonadThrow<F>) => {
-    // const tumblr = new Tumblr(config, this.logger)
+  program: Effect.Program<F> = (M: Effect.MonadThrow<F>) =>
+    pipe(
+      A.sequence(M)([
+        this.requiredInput(M, 'consumer-key'),
+        this.requiredInput(M, 'consumer-secret'),
+        this.requiredInput(M, 'access-token'),
+        this.requiredInput(M, 'access-token-secret'),
+        this.requiredInput(M, 'text')
+      ]),
+      maybeInputs =>
+        M.chain(
+          M.chain(
+            M.map(maybeInputs, inputs => {
+              const [
+                consumerKey,
+                consumerSecret,
+                accessToken,
+                accessTokenSecret,
+                text
+              ] = inputs
 
-    // await this.logger.info(`🥃 Sending post [${text}]`)
-    // await tumblr.post(text)
+              const config = {
+                consumerKey,
+                consumerSecret,
+                accessToken,
+                accessTokenSecret
+              } as Tumblr.Config
 
-    const maybeInputs = A.sequence(M)([
-      this.requiredInput(M, 'consumer-key'),
-      this.requiredInput(M, 'consumer-secret'),
-      this.requiredInput(M, 'access - token'),
-      this.requiredInput(M, 'access-token-secret')
-    ])
-
-    const maybeConfig = M.map(maybeInputs, inputs => {
-      const [consumerKey, consumerSecret, accessToken, accessTokenSecret] =
-        inputs
-
-      const config: Tumblr.Config = {
-        consumerKey,
-        consumerSecret,
-        accessToken,
-        accessTokenSecret
-      }
-      return config
-    })
-
-    console.log(maybeConfig)
-
-    return M.chain(
-      M.chain(this.runtime.inputs('text'), Validate.requiredF(M, 'text')),
-      this.logger.info
+              return [config, text] as [Tumblr.Config, string]
+            }),
+            Effect.M.tap(M, ([, text]) =>
+              this.logger.info('🥃 sending tumblr post', { text })
+            )
+          ),
+          ([config, text]) => this.tumblr.post(config, text)
+        )
     )
-  }
 }
