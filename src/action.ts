@@ -54,7 +54,10 @@ export class PostTumblrAction<F extends Effect.URIS> {
   post(config: Tumblr.Config, post: TextPost): Effect.Kind<F, Post> {
     return this.M.chain(
       this.logger.info('🥃 sending tumblr post', { text: post.text }),
-      () => this.tumblr.post(config, post.text)
+      () =>
+        this.M.chain(this.media(), media =>
+          this.tumblr.post(config, post.text, media)
+        )
     )
   }
 
@@ -65,9 +68,28 @@ export class PostTumblrAction<F extends Effect.URIS> {
         'reply-id': reblog.replyTo
       }),
       () =>
-        this.M.chain(this.replyPost(), reply =>
-          this.tumblr.reblog(config, reblog.text, reply)
+        this.M.chain(this.media(), media =>
+          this.M.chain(this.replyPost(), reply =>
+            this.tumblr.reblog(config, reblog.text, reply, media)
+          )
         )
+    )
+  }
+
+  media(): Effect.Kind<F, string[]> {
+    const logMediaPath = Effect.M.tap<F, string | undefined>(this.M, media =>
+      media
+        ? this.logger.info('reading files from media folder', { path: media })
+        : this.logger.debug('no media found')
+    )
+
+    const logMedia = Effect.M.tap<F, string[]>(this.M, media =>
+      this.logger.info('reading files from media folder', {
+        files: media.join(',')
+      })
+    )
+    return this.M.chain(logMediaPath(this.runtime.inputs('media')), media =>
+      media ? logMedia(this.runtime.fs(media)) : this.M.of([])
     )
   }
 
@@ -105,8 +127,8 @@ export class PostTumblrAction<F extends Effect.URIS> {
               } as Tumblr.Config
 
               const post: PostType = replyTo
-                ? ({ kind: 'reblog', text, replyTo } as Reblog)
-                : ({ kind: 'text', text } as TextPost)
+                ? ({ kind: 'reblog', text, replyTo, media: [] } as Reblog)
+                : ({ kind: 'text', text, media: [] } as TextPost)
 
               return [config, post] as [Tumblr.Config, PostType]
             }),

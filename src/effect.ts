@@ -23,10 +23,11 @@ export type MonadThrow<F extends URIS> = MonadThrow2<F>
 const tap: <F extends URIS, A>(
   MT: MonadThrow<F>,
   f: (_: A) => Kind<F, void>
-) => (tapped: A) => Kind<F, A> = (MT, f) => {
-  return tapped => {
-    return MT.chain(f(tapped), () => MT.of(tapped))
-  }
+) => (tapped: Kind<F, A>) => Kind<F, A> = (MT, f) => tapped => {
+  return MT.chain(
+    MT.chain(tapped, t => f(t)),
+    () => tapped
+  )
 }
 
 export const M = {

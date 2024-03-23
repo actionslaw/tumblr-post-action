@@ -16,8 +16,10 @@ interface TestState {
   logs: [string, string][]
   config: O.Option<Tumblr.Config>
   posts: string[]
+  postedMedia: string[]
   reblogs: [string, Post][]
   sampleTextPost: Post
+  media: Record<string, string[]>
 }
 
 const URI = 'TestEffect'
@@ -47,7 +49,10 @@ const TestLogger: Logger<URI> = {
     S.modify<TestState>(s => {
       const update = { logs: [...s.logs, ...Object.entries(data)] }
       return Object.assign(s, update)
-    })
+    }),
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  debug: (_: string) => S.right(undefined)
 }
 
 const TestRuntime: Runtime<URI> = {
@@ -58,11 +63,13 @@ const TestRuntime: Runtime<URI> = {
       const update = { outputs: [...s.outputs, [name, value]] }
       return Object.assign(s, update)
     })
-  }
+  },
+
+  fs: (path: string) => S.gets(s => s.media[path])
 }
 
 const TestTumblr: Tumblr.Interface<URI> = {
-  post: (config: Tumblr.Config, text: string) => {
+  post: (config: Tumblr.Config, text: string, media: string[]) => {
     return S.chain(() =>
       S.gets<TestState, Error, Post>(s => {
         const post: Post = s.sampleTextPost
@@ -70,13 +77,22 @@ const TestTumblr: Tumblr.Interface<URI> = {
       })
     )(
       S.modify<TestState>(s => {
-        const update = { posts: [...s.posts, text], config: O.some(config) }
+        const update = {
+          posts: [...s.posts, text],
+          postedMedia: media,
+          config: O.some(config)
+        }
         return Object.assign(s, update)
       })
     )
   },
 
-  reblog: (config: Tumblr.Config, text: string, replyTo: Post) => {
+  reblog: (
+    config: Tumblr.Config,
+    text: string,
+    replyTo: Post,
+    media: string[]
+  ) => {
     return S.chain(() =>
       S.gets<TestState, Error, Post>(s => {
         const post: Post = s.sampleTextPost
@@ -86,6 +102,7 @@ const TestTumblr: Tumblr.Interface<URI> = {
       S.modify<TestState>(s => {
         const update = {
           reblogs: [...s.reblogs, [text, replyTo]],
+          postedMedia: media,
           config: O.some(config)
         }
         return Object.assign(s, update)
@@ -106,12 +123,14 @@ function run(
     logs: [],
     config: O.none,
     posts: [],
+    postedMedia: [],
     reblogs: [],
     sampleTextPost: {
       id: 'test-post-id',
       tumblelogId: 'test-tumblelog-uuid',
       reblogKey: 'test-reblog-key'
-    }
+    },
+    media: { path: ['file-1', 'file-2'] }
   }
 
   const maybeRun = program(initialState)
@@ -181,6 +200,24 @@ describe('PostTumblrAction', () => {
     ])
   })
 
+  it('post to tumblr with media', () => {
+    const inputs = { text: 'test-post', media: 'path', ...config }
+    const state = run(action.program(), inputs)
+    expect(optics(state, s => s.postedMedia)).toEqualRight(['file-1', 'file-2'])
+  })
+
+  it('log posted media', () => {
+    const inputs = { text: 'test-post', media: 'path', ...config }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.logs)).toEqualRight([
+      ['text', 'test-post'],
+      ['path', 'path'],
+      ['files', 'file-1,file-2']
+    ])
+  })
+
   it('reblog tumblr post', () => {
     const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
     const expectedReply: Post = {
@@ -216,6 +253,39 @@ describe('PostTumblrAction', () => {
 
     expect(optics(state, s => s.outputs)).toEqualRight([
       ['post-id', 'test-post-id|test-tumblelog-uuid|test-reblog-key']
+    ])
+  })
+
+  it('reblog to tumblr with media', () => {
+    const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
+    const inputs = {
+      text: 'test-post',
+      replyTo: replyId,
+      media: 'path',
+      ...config
+    }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.postedMedia)).toEqualRight(['file-1', 'file-2'])
+  })
+
+  it('log reblogged media', () => {
+    const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
+    const inputs = {
+      text: 'test-reblog',
+      replyTo: replyId,
+      media: 'path',
+      ...config
+    }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.logs)).toEqualRight([
+      ['text', 'test-reblog'],
+      ['reply-id', replyId],
+      ['path', 'path'],
+      ['files', 'file-1,file-2']
     ])
   })
 })

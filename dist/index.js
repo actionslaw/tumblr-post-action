@@ -42915,6 +42915,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PostTumblrAction = void 0;
 const A = __importStar(__nccwpck_require__(3834));
 const Validate = __importStar(__nccwpck_require__(4953));
+const Effect = __importStar(__nccwpck_require__(8568));
 const post_1 = __nccwpck_require__(7051);
 const function_1 = __nccwpck_require__(6985);
 class PostTumblrAction {
@@ -42935,13 +42936,22 @@ class PostTumblrAction {
         return this.M.chain(this.runtime.inputs('replyTo'), id => (0, post_1.postDecoder)(this.M, id));
     }
     post(config, post) {
-        return this.M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.tumblr.post(config, post.text));
+        return this.M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.M.chain(this.media(), media => this.tumblr.post(config, post.text, media)));
     }
     reblog(config, reblog) {
         return this.M.chain(this.logger.info('🥃 reblogging tumblr post', {
             text: reblog.text,
             'reply-id': reblog.replyTo
-        }), () => this.M.chain(this.replyPost(), reply => this.tumblr.reblog(config, reblog.text, reply)));
+        }), () => this.M.chain(this.media(), media => this.M.chain(this.replyPost(), reply => this.tumblr.reblog(config, reblog.text, reply, media))));
+    }
+    media() {
+        const logMediaPath = Effect.M.tap(this.M, media => media
+            ? this.logger.info('reading files from media folder', { path: media })
+            : this.logger.debug('no media found'));
+        const logMedia = Effect.M.tap(this.M, media => this.logger.info('reading files from media folder', {
+            files: media.join(',')
+        }));
+        return this.M.chain(logMediaPath(this.runtime.inputs('media')), media => media ? logMedia(this.runtime.fs(media)) : this.M.of([]));
     }
     program() {
         return (0, function_1.pipe)(A.sequence(this.M)([
@@ -42962,8 +42972,8 @@ class PostTumblrAction {
                 blogIdentifier
             };
             const post = replyTo
-                ? { kind: 'reblog', text, replyTo }
-                : { kind: 'text', text };
+                ? { kind: 'reblog', text, replyTo, media: [] }
+                : { kind: 'text', text, media: [] };
             return [config, post];
         }), ([config, post]) => {
             switch (post.kind) {
@@ -43022,10 +43032,8 @@ function tryCatch(task) {
 }
 exports.tryCatch = tryCatch;
 exports.Effect = TE.MonadThrow;
-const tap = (MT, f) => {
-    return tapped => {
-        return MT.chain(f(tapped), () => MT.of(tapped));
-    };
+const tap = (MT, f) => tapped => {
+    return MT.chain(MT.chain(tapped, t => f(t)), () => tapped);
 };
 exports.M = {
     tap
@@ -43121,6 +43129,9 @@ exports.GitHubActionsLogger = {
     info: (message, data) => {
         const segments = Object.entries(data).map(([key, value]) => `${key}=[${value}]`);
         return Effect.tryCatch(async () => core.info([message, ...segments].join(' ')));
+    },
+    debug: (message) => {
+        return Effect.tryCatch(async () => core.debug(message));
     }
 };
 
@@ -43214,9 +43225,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.GitHubActionsRuntime = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const Effect = __importStar(__nccwpck_require__(8568));
+const fs = __importStar(__nccwpck_require__(7147));
 exports.GitHubActionsRuntime = {
     inputs: (key) => Effect.tryCatch(async () => core.getInput(key)),
-    output: (name, value) => Effect.tryCatch(async () => core.setOutput(name, value))
+    output: (name, value) => Effect.tryCatch(async () => core.setOutput(name, value)),
+    fs: (path) => Effect.tryCatch(async () => fs.readdirSync(path).map(f => `${path}/${f}`))
 };
 
 
@@ -43253,10 +43266,11 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TumblrJs = void 0;
 const Effect = __importStar(__nccwpck_require__(8568));
+const fs = __importStar(__nccwpck_require__(7147));
 // eslint-disable-next-line @typescript-eslint/no-var-requires,  @typescript-eslint/no-require-imports, import/no-commonjs
 const tumblr = __nccwpck_require__(883);
 class TumblrJs {
-    post(config, text) {
+    post(config, text, media) {
         const client = tumblr.createClient({
             consumer_key: config.consumerKey,
             consumer_secret: config.consumerSecret,
@@ -43264,13 +43278,20 @@ class TumblrJs {
             token_secret: config.accessTokenSecret
         });
         return Effect.tryCatch(async () => {
+            const textBlock = {
+                type: 'text',
+                text
+            };
+            const imageBlocks = media
+                .map(m => fs.createReadStream(m))
+                .map(stream => {
+                return {
+                    type: 'image',
+                    media: stream
+                };
+            });
             const createdPost = await client.createPost(config.blogIdentifier, {
-                content: [
-                    {
-                        type: 'text',
-                        text
-                    }
-                ]
+                content: [textBlock, ...imageBlocks]
             });
             const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`;
             const postInfo = await client.getRequest(url);
@@ -43282,7 +43303,7 @@ class TumblrJs {
             return post;
         });
     }
-    reblog(config, text, replyTo) {
+    reblog(config, text, replyTo, media) {
         const client = tumblr.createClient({
             consumer_key: config.consumerKey,
             consumer_secret: config.consumerSecret,
@@ -43290,13 +43311,20 @@ class TumblrJs {
             token_secret: config.accessTokenSecret
         });
         return Effect.tryCatch(async () => {
+            const textBlock = {
+                type: 'text',
+                text
+            };
+            const imageBlocks = media
+                .map(m => fs.createReadStream(m))
+                .map(stream => {
+                return {
+                    type: 'image',
+                    media: stream
+                };
+            });
             const createdPost = await client.createPost(config.blogIdentifier, {
-                content: [
-                    {
-                        type: 'text',
-                        text
-                    }
-                ],
+                content: [textBlock, ...imageBlocks],
                 parent_post_id: replyTo.id,
                 parent_tumblelog_uuid: replyTo.tumblelogId,
                 reblog_key: replyTo.reblogKey
