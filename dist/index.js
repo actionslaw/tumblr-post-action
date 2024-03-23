@@ -43038,11 +43038,6 @@ const tap = (MT, f) => tapped => {
 exports.M = {
     tap
 };
-// export async function runSync(program: ProgramRunner): Promise<void> {
-//   E.getOrElse<Error, void>(error => {
-//     throw error
-//   })(await program(Effect)())
-// }
 async function runSync(program) {
     E.getOrElse(error => {
         throw error;
