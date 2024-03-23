@@ -48,6 +48,14 @@ jobs:
 Now whenever you push something to your repository, GitHub Actions will post on
 your behalf.
 
+### Replies
+
+You can reply to a blog post by setting the `replyTo` identifier. This is a `|`
+concatenated string consisting of, in order: the parent post ID, the parent
+tumblelog UUID and the reblog key.
+
+For example: `post-id|tumblelog-uuid|reblog-key`
+
 ## Development
 
 After you've cloned the repository to your local machine or codespace, you'll
