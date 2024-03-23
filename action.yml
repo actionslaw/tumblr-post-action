@@ -22,7 +22,9 @@ inputs:
     description: Folder containing images to post.
     required: false
   replyTo:
-    description: URl of the post to reply to.
+    description: >
+      Identifier of the response to reply to in the format of:
+      `post-id|tumblelog-uuid|reblog-key`.
     required: false
   consumer-key:
     description: >
@@ -44,6 +46,12 @@ inputs:
       Application access token secret, available from the Tumblr OAuth
       applications page: https://www.tumblr.com/oauth/apps.
     required: true
+
+outputs:
+  post-id:
+    description: >
+      Unique identifier of the post the can be used as input for replyTo, as
+      above.
 
 runs:
   using: node20

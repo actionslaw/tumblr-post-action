@@ -5,15 +5,19 @@ import { Logger } from '../src/logger'
 import { Runtime } from '../src/runtime'
 import { MonadThrow2 } from 'fp-ts/lib/MonadThrow'
 import * as O from 'fp-ts/Option'
+import { Post } from '../src/post'
 import * as Tumblr from '../src/tumblr'
 
 import '@relmify/jest-fp-ts'
 
 interface TestState {
   inputs: Record<string, string>
+  outputs: [string, string][]
   logs: [string, string][]
   config: O.Option<Tumblr.Config>
   posts: string[]
+  reblogs: [string, Post][]
+  sampleTextPost: Post
 }
 
 const URI = 'TestEffect'
@@ -47,15 +51,46 @@ const TestLogger: Logger<URI> = {
 }
 
 const TestRuntime: Runtime<URI> = {
-  inputs: (key: string) => S.gets(s => s.inputs[key])
+  inputs: (key: string) => S.gets(s => s.inputs[key]),
+
+  output: (name: string, value: string) => {
+    return S.modify(s => {
+      const update = { outputs: [...s.outputs, [name, value]] }
+      return Object.assign(s, update)
+    })
+  }
 }
 
 const TestTumblr: Tumblr.Interface<URI> = {
   post: (config: Tumblr.Config, text: string) => {
-    return S.modify<TestState>(s => {
-      const update = { posts: [...s.posts, text], config: O.some(config) }
-      return Object.assign(s, update)
-    })
+    return S.chain(() =>
+      S.gets<TestState, Error, Post>(s => {
+        const post: Post = s.sampleTextPost
+        return post
+      })
+    )(
+      S.modify<TestState>(s => {
+        const update = { posts: [...s.posts, text], config: O.some(config) }
+        return Object.assign(s, update)
+      })
+    )
+  },
+
+  reblog: (config: Tumblr.Config, text: string, replyTo: Post) => {
+    return S.chain(() =>
+      S.gets<TestState, Error, Post>(s => {
+        const post: Post = s.sampleTextPost
+        return post
+      })
+    )(
+      S.modify<TestState>(s => {
+        const update = {
+          reblogs: [...s.reblogs, [text, replyTo]],
+          config: O.some(config)
+        }
+        return Object.assign(s, update)
+      })
+    )
   }
 }
 
@@ -67,9 +102,16 @@ function run(
 ): Either.Either<Error, TestState> {
   const initialState: TestState = {
     inputs: inputs ? inputs : {},
+    outputs: [],
     logs: [],
     config: O.none,
-    posts: []
+    posts: [],
+    reblogs: [],
+    sampleTextPost: {
+      id: 'test-post-id',
+      tumblelogId: 'test-tumblelog-uuid',
+      reblogKey: 'test-reblog-key'
+    }
   }
 
   const maybeRun = program(initialState)
@@ -98,18 +140,6 @@ const config = {
 describe('PostTumblrAction', () => {
   const action = new PostTumblrAction<URI>(TestLogger, TestRuntime, TestTumblr)
 
-  it('post to tumblr', () => {
-    const inputs = { text: 'test-post', ...config }
-    const state = run(action.program(MonadThrow), inputs)
-    expect(optics(state, s => s.posts)).toEqualRight(['test-post'])
-  })
-
-  it('log post text', () => {
-    const inputs = { text: 'test-post', ...config }
-    const state = run(action.program(MonadThrow), inputs)
-    expect(optics(state, s => s.logs)).toEqualRight([['text', 'test-post']])
-  })
-
   it('configure tumblr.js correctly', () => {
     const inputs = { text: 'test-post', ...config }
     const state = run(action.program(MonadThrow), inputs)
@@ -122,5 +152,65 @@ describe('PostTumblrAction', () => {
         blogIdentifier: 'test-blog-identifier'
       } as Tumblr.Config)
     )
+  })
+
+  it('post to tumblr', () => {
+    const inputs = { text: 'test-post', ...config }
+    const state = run(action.program(MonadThrow), inputs)
+    expect(optics(state, s => s.posts)).toEqualRight(['test-post'])
+  })
+
+  it('log post text', () => {
+    const inputs = { text: 'test-post', ...config }
+    const state = run(action.program(MonadThrow), inputs)
+    expect(optics(state, s => s.logs)).toEqualRight([['text', 'test-post']])
+  })
+
+  it('output post id', () => {
+    const inputs = { text: 'test-post', ...config }
+
+    const state = run(action.program(MonadThrow), inputs)
+
+    expect(optics(state, s => s.outputs)).toEqualRight([
+      ['post-id', 'test-post-id|test-tumblelog-uuid|test-reblog-key']
+    ])
+  })
+
+  it('reblog tumblr post', () => {
+    const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
+    const expectedReply: Post = {
+      id: 'test-reply-id',
+      tumblelogId: 'test-tumblelog-uuid',
+      reblogKey: 'test-reblog-key'
+    }
+    const inputs = { text: 'test-reblog', replyTo: replyId, ...config }
+
+    const state = run(action.program(MonadThrow), inputs)
+
+    expect(optics(state, s => s.reblogs)).toEqualRight([
+      ['test-reblog', expectedReply]
+    ])
+  })
+
+  it('log reblog', () => {
+    const replyId = 'test-post-id|test-tumblelog-uuid|test-reblog-key'
+    const inputs = { text: 'test-reblog', replyTo: replyId, ...config }
+
+    const state = run(action.program(MonadThrow), inputs)
+
+    expect(optics(state, s => s.logs)).toEqualRight([
+      ['text', 'test-reblog'],
+      ['reply-id', replyId]
+    ])
+  })
+
+  it('output reblog post id', () => {
+    const inputs = { text: 'test-post', ...config }
+
+    const state = run(action.program(MonadThrow), inputs)
+
+    expect(optics(state, s => s.outputs)).toEqualRight([
+      ['post-id', 'test-post-id|test-tumblelog-uuid|test-reblog-key']
+    ])
   })
 })

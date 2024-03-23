@@ -42915,7 +42915,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PostTumblrAction = void 0;
 const A = __importStar(__nccwpck_require__(3834));
 const Validate = __importStar(__nccwpck_require__(4953));
-const Effect = __importStar(__nccwpck_require__(8568));
+const post_1 = __nccwpck_require__(7051);
 const function_1 = __nccwpck_require__(6985);
 class PostTumblrAction {
     runtime;
@@ -42929,15 +42929,28 @@ class PostTumblrAction {
     requiredInput(M, key) {
         return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key));
     }
+    replyPost(M) {
+        return M.chain(this.runtime.inputs('replyTo'), id => (0, post_1.postDecoder)(M, id));
+    }
+    post(M, config, post) {
+        return M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.tumblr.post(config, post.text));
+    }
+    reblog(M, config, reblog) {
+        return M.chain(this.logger.info('🥃 reblogging tumblr post', {
+            text: reblog.text,
+            'reply-id': reblog.replyTo
+        }), () => M.chain(this.replyPost(M), reply => this.tumblr.reblog(config, reblog.text, reply)));
+    }
     program = (M) => (0, function_1.pipe)(A.sequence(M)([
         this.requiredInput(M, 'consumer-key'),
         this.requiredInput(M, 'consumer-secret'),
         this.requiredInput(M, 'access-token'),
         this.requiredInput(M, 'access-token-secret'),
         this.requiredInput(M, 'blog-identifier'),
-        this.requiredInput(M, 'text')
+        this.requiredInput(M, 'text'),
+        this.runtime.inputs('replyTo')
     ]), maybeInputs => M.chain(M.chain(M.map(maybeInputs, inputs => {
-        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier, text] = inputs;
+        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier, text, replyTo] = inputs;
         const config = {
             consumerKey,
             consumerSecret,
@@ -42945,8 +42958,23 @@ class PostTumblrAction {
             accessTokenSecret,
             blogIdentifier
         };
-        return [config, text];
-    }), Effect.M.tap(M, ([, text]) => this.logger.info('🥃 sending tumblr post', { text }))), ([config, text]) => this.tumblr.post(config, text)));
+        const post = replyTo
+            ? { kind: 'reblog', text, replyTo }
+            : { kind: 'text', text };
+        return [config, post];
+    }), ([config, post]) => {
+        switch (post.kind) {
+            case 'text':
+                return this.post(M, config, post);
+            case 'reblog':
+                return this.reblog(M, config, post);
+            default:
+                return M.throwError(new Error('could not determine post type'));
+        }
+    }), (post) => {
+        const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`;
+        return this.runtime.output('post-id', postId);
+    }));
 }
 exports.PostTumblrAction = PostTumblrAction;
 
@@ -43090,6 +43118,61 @@ exports.GitHubActionsLogger = {
 
 /***/ }),
 
+/***/ 7051:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.postDecoder = void 0;
+const A = __importStar(__nccwpck_require__(3834));
+const Validate = __importStar(__nccwpck_require__(4953));
+function postDecoder(M, id) {
+    const [maybePostId, maybeTumblelogId, maybeReblogKey] = id
+        ? id.split('|')
+        : [];
+    return M.map(A.sequence(M)([
+        Validate.requiredF(M, 'id')(maybePostId),
+        Validate.requiredF(M, 'tumblelogId')(maybeTumblelogId),
+        Validate.requiredF(M, 'reblogKey')(maybeReblogKey)
+    ]), inputs => {
+        const [postId, tumblelogId, reblogKey] = inputs;
+        const post = {
+            id: postId,
+            tumblelogId,
+            reblogKey
+        };
+        return post;
+    });
+}
+exports.postDecoder = postDecoder;
+
+
+/***/ }),
+
 /***/ 7073:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -43123,7 +43206,8 @@ exports.GitHubActionsRuntime = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const Effect = __importStar(__nccwpck_require__(8568));
 exports.GitHubActionsRuntime = {
-    inputs: (key) => Effect.tryCatch(async () => core.getInput(key))
+    inputs: (key) => Effect.tryCatch(async () => core.getInput(key)),
+    output: (name, value) => Effect.tryCatch(async () => core.setOutput(name, value))
 };
 
 
@@ -43170,14 +43254,53 @@ class TumblrJs {
             token: config.accessToken,
             token_secret: config.accessTokenSecret
         });
-        return Effect.tryCatch(async () => await client.createPost(config.blogIdentifier, {
-            content: [
-                {
-                    type: 'text',
-                    text
-                }
-            ]
-        }));
+        return Effect.tryCatch(async () => {
+            const createdPost = await client.createPost(config.blogIdentifier, {
+                content: [
+                    {
+                        type: 'text',
+                        text
+                    }
+                ]
+            });
+            const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`;
+            const postInfo = await client.getRequest(url);
+            const post = {
+                id: createdPost.id,
+                tumblelogId: postInfo.tumblelog_uuid,
+                reblogKey: postInfo.reblog_key
+            };
+            return post;
+        });
+    }
+    reblog(config, text, replyTo) {
+        const client = tumblr.createClient({
+            consumer_key: config.consumerKey,
+            consumer_secret: config.consumerSecret,
+            token: config.accessToken,
+            token_secret: config.accessTokenSecret
+        });
+        return Effect.tryCatch(async () => {
+            const createdPost = await client.createPost(config.blogIdentifier, {
+                content: [
+                    {
+                        type: 'text',
+                        text
+                    }
+                ],
+                parent_post_id: replyTo.id,
+                parent_tumblelog_uuid: replyTo.tumblelogId,
+                reblog_key: replyTo.reblogKey
+            });
+            const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`;
+            const postInfo = await client.getRequest(url);
+            const post = {
+                id: createdPost.id,
+                tumblelogId: postInfo.tumblelog_uuid,
+                reblogKey: postInfo.reblog_key
+            };
+            return post;
+        });
     }
 }
 exports.TumblrJs = TumblrJs;
