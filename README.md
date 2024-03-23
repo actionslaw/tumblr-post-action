@@ -22,7 +22,7 @@ and `access-token-secret` inputs.
 
 You also need to specify your
 [blog identifier](https://www.tumblr.com/docs/en/api/v2#blog-identifiers) as the
-`consumer-key` identifier.
+`blog-identifier` identifier.
 
 For example:
 
