@@ -33,14 +33,18 @@ export const M = {
   tap
 }
 
-export type Program<F extends URIS> = (MT: MonadThrow<F>) => Kind<F, void>
+// export type Program<F extends URIS> = (MT: MonadThrow<F>) => Kind<F, void>
 
-type ProgramRunner = (
-  _: MonadThrow<URI>
-) => () => Promise<E.Either<Error, void>>
+type ProgramRunner = () => Promise<E.Either<Error, void>>
+
+// export async function runSync(program: ProgramRunner): Promise<void> {
+//   E.getOrElse<Error, void>(error => {
+//     throw error
+//   })(await program(Effect)())
+// }
 
 export async function runSync(program: ProgramRunner): Promise<void> {
   E.getOrElse<Error, void>(error => {
     throw error
-  })(await program(Effect)())
+  })(await program())
 }

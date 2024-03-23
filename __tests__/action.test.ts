@@ -138,11 +138,16 @@ const config = {
 }
 
 describe('PostTumblrAction', () => {
-  const action = new PostTumblrAction<URI>(TestLogger, TestRuntime, TestTumblr)
+  const action = new PostTumblrAction<URI>(
+    MonadThrow,
+    TestLogger,
+    TestRuntime,
+    TestTumblr
+  )
 
   it('configure tumblr.js correctly', () => {
     const inputs = { text: 'test-post', ...config }
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
     expect(optics(state, s => s.config)).toEqualRight(
       O.some({
         consumerKey: 'test-consumer-key',
@@ -156,20 +161,20 @@ describe('PostTumblrAction', () => {
 
   it('post to tumblr', () => {
     const inputs = { text: 'test-post', ...config }
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
     expect(optics(state, s => s.posts)).toEqualRight(['test-post'])
   })
 
   it('log post text', () => {
     const inputs = { text: 'test-post', ...config }
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
     expect(optics(state, s => s.logs)).toEqualRight([['text', 'test-post']])
   })
 
   it('output post id', () => {
     const inputs = { text: 'test-post', ...config }
 
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
 
     expect(optics(state, s => s.outputs)).toEqualRight([
       ['post-id', 'test-post-id|test-tumblelog-uuid|test-reblog-key']
@@ -185,7 +190,7 @@ describe('PostTumblrAction', () => {
     }
     const inputs = { text: 'test-reblog', replyTo: replyId, ...config }
 
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
 
     expect(optics(state, s => s.reblogs)).toEqualRight([
       ['test-reblog', expectedReply]
@@ -196,7 +201,7 @@ describe('PostTumblrAction', () => {
     const replyId = 'test-post-id|test-tumblelog-uuid|test-reblog-key'
     const inputs = { text: 'test-reblog', replyTo: replyId, ...config }
 
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
 
     expect(optics(state, s => s.logs)).toEqualRight([
       ['text', 'test-reblog'],
@@ -207,7 +212,7 @@ describe('PostTumblrAction', () => {
   it('output reblog post id', () => {
     const inputs = { text: 'test-post', ...config }
 
-    const state = run(action.program(MonadThrow), inputs)
+    const state = run(action.program(), inputs)
 
     expect(optics(state, s => s.outputs)).toEqualRight([
       ['post-id', 'test-post-id|test-tumblelog-uuid|test-reblog-key']

@@ -42918,63 +42918,67 @@ const Validate = __importStar(__nccwpck_require__(4953));
 const post_1 = __nccwpck_require__(7051);
 const function_1 = __nccwpck_require__(6985);
 class PostTumblrAction {
+    M;
     runtime;
     logger;
     tumblr;
-    constructor(logger, runtime, tumblr) {
+    constructor(M, logger, runtime, tumblr) {
+        this.M = M;
         this.logger = logger;
         this.runtime = runtime;
         this.tumblr = tumblr;
     }
-    requiredInput(M, key) {
-        return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key));
+    requiredInput(key) {
+        return this.M.chain(this.runtime.inputs(key), Validate.requiredF(this.M, key));
     }
-    replyPost(M) {
-        return M.chain(this.runtime.inputs('replyTo'), id => (0, post_1.postDecoder)(M, id));
+    replyPost() {
+        return this.M.chain(this.runtime.inputs('replyTo'), id => (0, post_1.postDecoder)(this.M, id));
     }
-    post(M, config, post) {
-        return M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.tumblr.post(config, post.text));
+    post(config, post) {
+        return this.M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.tumblr.post(config, post.text));
     }
-    reblog(M, config, reblog) {
-        return M.chain(this.logger.info('🥃 reblogging tumblr post', {
+    reblog(config, reblog) {
+        return this.M.chain(this.logger.info('🥃 reblogging tumblr post', {
             text: reblog.text,
             'reply-id': reblog.replyTo
-        }), () => M.chain(this.replyPost(M), reply => this.tumblr.reblog(config, reblog.text, reply)));
+        }), () => this.M.chain(this.replyPost(), reply => this.tumblr.reblog(config, reblog.text, reply)));
     }
-    program = (M) => (0, function_1.pipe)(A.sequence(M)([
-        this.requiredInput(M, 'consumer-key'),
-        this.requiredInput(M, 'consumer-secret'),
-        this.requiredInput(M, 'access-token'),
-        this.requiredInput(M, 'access-token-secret'),
-        this.requiredInput(M, 'blog-identifier'),
-        this.requiredInput(M, 'text'),
-        this.runtime.inputs('replyTo')
-    ]), maybeInputs => M.chain(M.chain(M.map(maybeInputs, inputs => {
-        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier, text, replyTo] = inputs;
-        const config = {
-            consumerKey,
-            consumerSecret,
-            accessToken,
-            accessTokenSecret,
-            blogIdentifier
-        };
-        const post = replyTo
-            ? { kind: 'reblog', text, replyTo }
-            : { kind: 'text', text };
-        return [config, post];
-    }), ([config, post]) => {
-        switch (post.kind) {
-            case 'text':
-                return this.post(M, config, post);
-            case 'reblog':
-                return this.reblog(M, config, post);
-            default:
-                return M.throwError(new Error('could not determine post type'));
-        }
-    }), (post) => {
-        const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`;
-        return this.runtime.output('post-id', postId);
-    }));
+    program() {
+        return (0, function_1.pipe)(A.sequence(this.M)([
+            this.requiredInput('consumer-key'),
+            this.requiredInput('consumer-secret'),
+            this.requiredInput('access-token'),
+            this.requiredInput('access-token-secret'),
+            this.requiredInput('blog-identifier'),
+            this.requiredInput('text'),
+            this.runtime.inputs('replyTo')
+        ]), maybeInputs => this.M.chain(this.M.chain(this.M.map(maybeInputs, inputs => {
+            const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier, text, replyTo] = inputs;
+            const config = {
+                consumerKey,
+                consumerSecret,
+                accessToken,
+                accessTokenSecret,
+                blogIdentifier
+            };
+            const post = replyTo
+                ? { kind: 'reblog', text, replyTo }
+                : { kind: 'text', text };
+            return [config, post];
+        }), ([config, post]) => {
+            switch (post.kind) {
+                case 'text':
+                    return this.post(config, post);
+                case 'reblog':
+                    return this.reblog(config, post);
+                default:
+                    return this.M.throwError(new Error('could not determine post type'));
+            }
+        }), (post) => {
+            const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`;
+            return this.runtime.output('post-id', postId);
+        }));
+    }
 }
 exports.PostTumblrAction = PostTumblrAction;
 
@@ -43026,10 +43030,15 @@ const tap = (MT, f) => {
 exports.M = {
     tap
 };
+// export async function runSync(program: ProgramRunner): Promise<void> {
+//   E.getOrElse<Error, void>(error => {
+//     throw error
+//   })(await program(Effect)())
+// }
 async function runSync(program) {
     E.getOrElse(error => {
         throw error;
-    })(await program(exports.Effect)());
+    })(await program());
 }
 exports.runSync = runSync;
 
@@ -43070,8 +43079,8 @@ const logger_1 = __nccwpck_require__(4636);
 const runtime_1 = __nccwpck_require__(7073);
 const tumblr_1 = __nccwpck_require__(8537);
 const Effect = __importStar(__nccwpck_require__(8568));
-const action = new action_1.PostTumblrAction(logger_1.GitHubActionsLogger, runtime_1.GitHubActionsRuntime, new tumblr_1.TumblrJs());
-Effect.runSync(action.program);
+const action = new action_1.PostTumblrAction(Effect.Effect, logger_1.GitHubActionsLogger, runtime_1.GitHubActionsRuntime, new tumblr_1.TumblrJs());
+Effect.runSync(action.program());
 
 
 /***/ }),

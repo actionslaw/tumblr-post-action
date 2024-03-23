@@ -21,71 +21,71 @@ interface Reblog {
 type PostType = TextPost | Reblog
 
 export class PostTumblrAction<F extends Effect.URIS> {
+  private readonly M: Effect.MonadThrow<F>
   private readonly runtime: Runtime<F>
   private readonly logger: Logger<F>
   private readonly tumblr: Tumblr.Interface<F>
 
   constructor(
+    M: Effect.MonadThrow<F>,
     logger: Logger<F>,
     runtime: Runtime<F>,
     tumblr: Tumblr.Interface<F>
   ) {
+    this.M = M
     this.logger = logger
     this.runtime = runtime
     this.tumblr = tumblr
   }
 
-  requiredInput(M: Effect.MonadThrow<F>, key: string): Effect.Kind<F, string> {
-    return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key))
+  requiredInput(key: string): Effect.Kind<F, string> {
+    return this.M.chain(
+      this.runtime.inputs(key),
+      Validate.requiredF(this.M, key)
+    )
   }
 
-  replyPost(M: Effect.MonadThrow<F>): Effect.Kind<F, Post> {
-    return M.chain(this.runtime.inputs('replyTo'), id => postDecoder(M, id))
+  replyPost(): Effect.Kind<F, Post> {
+    return this.M.chain(this.runtime.inputs('replyTo'), id =>
+      postDecoder(this.M, id)
+    )
   }
 
-  post(
-    M: Effect.MonadThrow<F>,
-    config: Tumblr.Config,
-    post: TextPost
-  ): Effect.Kind<F, Post> {
-    return M.chain(
+  post(config: Tumblr.Config, post: TextPost): Effect.Kind<F, Post> {
+    return this.M.chain(
       this.logger.info('🥃 sending tumblr post', { text: post.text }),
       () => this.tumblr.post(config, post.text)
     )
   }
 
-  reblog(
-    M: Effect.MonadThrow<F>,
-    config: Tumblr.Config,
-    reblog: Reblog
-  ): Effect.Kind<F, Post> {
-    return M.chain(
+  reblog(config: Tumblr.Config, reblog: Reblog): Effect.Kind<F, Post> {
+    return this.M.chain(
       this.logger.info('🥃 reblogging tumblr post', {
         text: reblog.text,
         'reply-id': reblog.replyTo
       }),
       () =>
-        M.chain(this.replyPost(M), reply =>
+        this.M.chain(this.replyPost(), reply =>
           this.tumblr.reblog(config, reblog.text, reply)
         )
     )
   }
 
-  program: Effect.Program<F> = (M: Effect.MonadThrow<F>) =>
-    pipe(
-      A.sequence(M)([
-        this.requiredInput(M, 'consumer-key'),
-        this.requiredInput(M, 'consumer-secret'),
-        this.requiredInput(M, 'access-token'),
-        this.requiredInput(M, 'access-token-secret'),
-        this.requiredInput(M, 'blog-identifier'),
-        this.requiredInput(M, 'text'),
+  program(): Effect.Kind<F, void> {
+    return pipe(
+      A.sequence(this.M)([
+        this.requiredInput('consumer-key'),
+        this.requiredInput('consumer-secret'),
+        this.requiredInput('access-token'),
+        this.requiredInput('access-token-secret'),
+        this.requiredInput('blog-identifier'),
+        this.requiredInput('text'),
         this.runtime.inputs('replyTo')
       ]),
       maybeInputs =>
-        M.chain(
-          M.chain<Error, [Tumblr.Config, PostType], Post>(
-            M.map(maybeInputs, inputs => {
+        this.M.chain(
+          this.M.chain<Error, [Tumblr.Config, PostType], Post>(
+            this.M.map(maybeInputs, inputs => {
               const [
                 consumerKey,
                 consumerSecret,
@@ -113,13 +113,13 @@ export class PostTumblrAction<F extends Effect.URIS> {
             ([config, post]) => {
               switch (post.kind) {
                 case 'text':
-                  return this.post(M, config, post)
+                  return this.post(config, post)
 
                 case 'reblog':
-                  return this.reblog(M, config, post)
+                  return this.reblog(config, post)
 
                 default:
-                  return M.throwError(
+                  return this.M.throwError(
                     new Error('could not determine post type')
                   )
               }
@@ -131,4 +131,5 @@ export class PostTumblrAction<F extends Effect.URIS> {
           }
         )
     )
+  }
 }
