@@ -20,28 +20,7 @@ export const Effect = TE.MonadThrow
 
 export type MonadThrow<F extends URIS> = MonadThrow2<F>
 
-const tap: <F extends URIS, A>(
-  MT: MonadThrow<F>,
-  f: (_: A) => Kind<F, void>
-) => (tapped: A) => Kind<F, A> = (MT, f) => {
-  return tapped => {
-    return MT.chain(f(tapped), () => MT.of(tapped))
-  }
-}
-
-export const M = {
-  tap
-}
-
-// export type Program<F extends URIS> = (MT: MonadThrow<F>) => Kind<F, void>
-
 type ProgramRunner = () => Promise<E.Either<Error, void>>
-
-// export async function runSync(program: ProgramRunner): Promise<void> {
-//   E.getOrElse<Error, void>(error => {
-//     throw error
-//   })(await program(Effect)())
-// }
 
 export async function runSync(program: ProgramRunner): Promise<void> {
   E.getOrElse<Error, void>(error => {

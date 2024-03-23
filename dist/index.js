@@ -43014,7 +43014,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.runSync = exports.M = exports.Effect = exports.tryCatch = void 0;
+exports.runSync = exports.Effect = exports.tryCatch = void 0;
 const E = __importStar(__nccwpck_require__(7534));
 const TE = __importStar(__nccwpck_require__(437));
 function tryCatch(task) {
@@ -43022,19 +43022,6 @@ function tryCatch(task) {
 }
 exports.tryCatch = tryCatch;
 exports.Effect = TE.MonadThrow;
-const tap = (MT, f) => {
-    return tapped => {
-        return MT.chain(f(tapped), () => MT.of(tapped));
-    };
-};
-exports.M = {
-    tap
-};
-// export async function runSync(program: ProgramRunner): Promise<void> {
-//   E.getOrElse<Error, void>(error => {
-//     throw error
-//   })(await program(Effect)())
-// }
 async function runSync(program) {
     E.getOrElse(error => {
         throw error;
