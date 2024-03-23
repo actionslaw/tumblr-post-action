@@ -43160,7 +43160,6 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.TumblrJs = void 0;
 const Effect = __importStar(__nccwpck_require__(8568));
-// import * as tumblr from 'tumblr.js'
 // eslint-disable-next-line @typescript-eslint/no-var-requires,  @typescript-eslint/no-require-imports, import/no-commonjs
 const tumblr = __nccwpck_require__(883);
 class TumblrJs {
