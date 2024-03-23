@@ -1,7 +1,13 @@
-/**
- * The entrypoint for the action.
- */
-import { run } from './main'
+import { PostTumblrAction } from './action'
+import { GitHubActionsLogger } from './logger'
+import { GitHubActionsRuntime } from './runtime'
+import { TumblrJs } from './tumblr'
+import * as Effect from './effect'
 
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-run()
+const action = new PostTumblrAction<Effect.URI>(
+  GitHubActionsLogger,
+  GitHubActionsRuntime,
+  new TumblrJs()
+)
+
+Effect.runSync(action.program)

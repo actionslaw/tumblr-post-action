@@ -43,7 +43,7 @@ jobs:
 
       - name: Build dist/ Directory
         id: build
-        run: npm run bundle
+        run: npm run build
 
       # This will fail the workflow if the PR wasn't created by Dependabot.
       - name: Compare Directories

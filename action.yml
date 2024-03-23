@@ -1,23 +1,49 @@
-name: 'The name of your action here'
-description: 'Provide a description here'
-author: 'Your name or organization here'
+name: Tumblr Post Action
+description: Automatically post to Tumblr via GitHub Actions
+author: Actionslaw
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
 branding:
-  icon: 'heart'
-  color: 'red'
+  icon: type
+  color: blue
 
 # Define your inputs here.
 inputs:
-  milliseconds:
-    description: 'Your input description here'
+  blog-identifier:
+    description: >
+      Unique identifier for your blog. You can find your identifier by following
+      this instructions here:
+      https://www.tumblr.com/docs/en/api/v2#blog-identifiers
     required: true
-    default: '1000'
-
-# Define your outputs here.
-outputs:
-  time:
-    description: 'Your output description here'
+  text:
+    description: The text to post to Tumblr.
+    required: true
+  media:
+    description: Folder containing images to post.
+    required: false
+  replyTo:
+    description: URl of the post to reply to.
+    required: false
+  consumer-key:
+    description: >
+      Consumer API key, available from the Tumblr OAuth applications page:
+      https://www.tumblr.com/oauth/apps.
+    required: true
+  consumer-secret:
+    description: >
+      Consumer API secret key, available from the Tumblr OAuth applications
+      page: https://www.tumblr.com/oauth/apps.
+    required: true
+  access-token:
+    description: >
+      Application access token, available from the Tumblr OAuth applications
+      page: https://www.tumblr.com/oauth/apps.
+    required: true
+  access-token-secret:
+    description: >
+      Application access token secret, available from the Tumblr OAuth
+      applications page: https://www.tumblr.com/oauth/apps.
+    required: true
 
 runs:
   using: node20

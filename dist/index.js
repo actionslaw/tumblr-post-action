@@ -1834,6 +1834,18184 @@ function isLoopbackAddress(host) {
 
 /***/ }),
 
+/***/ 4812:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+module.exports =
+{
+  parallel      : __nccwpck_require__(8210),
+  serial        : __nccwpck_require__(445),
+  serialOrdered : __nccwpck_require__(3578)
+};
+
+
+/***/ }),
+
+/***/ 1700:
+/***/ ((module) => {
+
+// API
+module.exports = abort;
+
+/**
+ * Aborts leftover active jobs
+ *
+ * @param {object} state - current state object
+ */
+function abort(state)
+{
+  Object.keys(state.jobs).forEach(clean.bind(state));
+
+  // reset leftover jobs
+  state.jobs = {};
+}
+
+/**
+ * Cleans up leftover job by invoking abort function for the provided job id
+ *
+ * @this  state
+ * @param {string|number} key - job id to abort
+ */
+function clean(key)
+{
+  if (typeof this.jobs[key] == 'function')
+  {
+    this.jobs[key]();
+  }
+}
+
+
+/***/ }),
+
+/***/ 2794:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var defer = __nccwpck_require__(5295);
+
+// API
+module.exports = async;
+
+/**
+ * Runs provided callback asynchronously
+ * even if callback itself is not
+ *
+ * @param   {function} callback - callback to invoke
+ * @returns {function} - augmented callback
+ */
+function async(callback)
+{
+  var isAsync = false;
+
+  // check if async happened
+  defer(function() { isAsync = true; });
+
+  return function async_callback(err, result)
+  {
+    if (isAsync)
+    {
+      callback(err, result);
+    }
+    else
+    {
+      defer(function nextTick_callback()
+      {
+        callback(err, result);
+      });
+    }
+  };
+}
+
+
+/***/ }),
+
+/***/ 5295:
+/***/ ((module) => {
+
+module.exports = defer;
+
+/**
+ * Runs provided function on next iteration of the event loop
+ *
+ * @param {function} fn - function to run
+ */
+function defer(fn)
+{
+  var nextTick = typeof setImmediate == 'function'
+    ? setImmediate
+    : (
+      typeof process == 'object' && typeof process.nextTick == 'function'
+      ? process.nextTick
+      : null
+    );
+
+  if (nextTick)
+  {
+    nextTick(fn);
+  }
+  else
+  {
+    setTimeout(fn, 0);
+  }
+}
+
+
+/***/ }),
+
+/***/ 9023:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var async = __nccwpck_require__(2794)
+  , abort = __nccwpck_require__(1700)
+  ;
+
+// API
+module.exports = iterate;
+
+/**
+ * Iterates over each job object
+ *
+ * @param {array|object} list - array or object (named list) to iterate over
+ * @param {function} iterator - iterator to run
+ * @param {object} state - current job status
+ * @param {function} callback - invoked when all elements processed
+ */
+function iterate(list, iterator, state, callback)
+{
+  // store current index
+  var key = state['keyedList'] ? state['keyedList'][state.index] : state.index;
+
+  state.jobs[key] = runJob(iterator, key, list[key], function(error, output)
+  {
+    // don't repeat yourself
+    // skip secondary callbacks
+    if (!(key in state.jobs))
+    {
+      return;
+    }
+
+    // clean up jobs
+    delete state.jobs[key];
+
+    if (error)
+    {
+      // don't process rest of the results
+      // stop still active jobs
+      // and reset the list
+      abort(state);
+    }
+    else
+    {
+      state.results[key] = output;
+    }
+
+    // return salvaged results
+    callback(error, state.results);
+  });
+}
+
+/**
+ * Runs iterator over provided job element
+ *
+ * @param   {function} iterator - iterator to invoke
+ * @param   {string|number} key - key/index of the element in the list of jobs
+ * @param   {mixed} item - job description
+ * @param   {function} callback - invoked after iterator is done with the job
+ * @returns {function|mixed} - job abort function or something else
+ */
+function runJob(iterator, key, item, callback)
+{
+  var aborter;
+
+  // allow shortcut if iterator expects only two arguments
+  if (iterator.length == 2)
+  {
+    aborter = iterator(item, async(callback));
+  }
+  // otherwise go with full three arguments
+  else
+  {
+    aborter = iterator(item, key, async(callback));
+  }
+
+  return aborter;
+}
+
+
+/***/ }),
+
+/***/ 2474:
+/***/ ((module) => {
+
+// API
+module.exports = state;
+
+/**
+ * Creates initial state object
+ * for iteration over list
+ *
+ * @param   {array|object} list - list to iterate over
+ * @param   {function|null} sortMethod - function to use for keys sort,
+ *                                     or `null` to keep them as is
+ * @returns {object} - initial state object
+ */
+function state(list, sortMethod)
+{
+  var isNamedList = !Array.isArray(list)
+    , initState =
+    {
+      index    : 0,
+      keyedList: isNamedList || sortMethod ? Object.keys(list) : null,
+      jobs     : {},
+      results  : isNamedList ? {} : [],
+      size     : isNamedList ? Object.keys(list).length : list.length
+    }
+    ;
+
+  if (sortMethod)
+  {
+    // sort array keys based on it's values
+    // sort object's keys just on own merit
+    initState.keyedList.sort(isNamedList ? sortMethod : function(a, b)
+    {
+      return sortMethod(list[a], list[b]);
+    });
+  }
+
+  return initState;
+}
+
+
+/***/ }),
+
+/***/ 7942:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var abort = __nccwpck_require__(1700)
+  , async = __nccwpck_require__(2794)
+  ;
+
+// API
+module.exports = terminator;
+
+/**
+ * Terminates jobs in the attached state context
+ *
+ * @this  AsyncKitState#
+ * @param {function} callback - final callback to invoke after termination
+ */
+function terminator(callback)
+{
+  if (!Object.keys(this.jobs).length)
+  {
+    return;
+  }
+
+  // fast forward iteration index
+  this.index = this.size;
+
+  // abort jobs
+  abort(this);
+
+  // send back results we have so far
+  async(callback)(null, this.results);
+}
+
+
+/***/ }),
+
+/***/ 8210:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var iterate    = __nccwpck_require__(9023)
+  , initState  = __nccwpck_require__(2474)
+  , terminator = __nccwpck_require__(7942)
+  ;
+
+// Public API
+module.exports = parallel;
+
+/**
+ * Runs iterator over provided array elements in parallel
+ *
+ * @param   {array|object} list - array or object (named list) to iterate over
+ * @param   {function} iterator - iterator to run
+ * @param   {function} callback - invoked when all elements processed
+ * @returns {function} - jobs terminator
+ */
+function parallel(list, iterator, callback)
+{
+  var state = initState(list);
+
+  while (state.index < (state['keyedList'] || list).length)
+  {
+    iterate(list, iterator, state, function(error, result)
+    {
+      if (error)
+      {
+        callback(error, result);
+        return;
+      }
+
+      // looks like it's the last one
+      if (Object.keys(state.jobs).length === 0)
+      {
+        callback(null, state.results);
+        return;
+      }
+    });
+
+    state.index++;
+  }
+
+  return terminator.bind(state, callback);
+}
+
+
+/***/ }),
+
+/***/ 445:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var serialOrdered = __nccwpck_require__(3578);
+
+// Public API
+module.exports = serial;
+
+/**
+ * Runs iterator over provided array elements in series
+ *
+ * @param   {array|object} list - array or object (named list) to iterate over
+ * @param   {function} iterator - iterator to run
+ * @param   {function} callback - invoked when all elements processed
+ * @returns {function} - jobs terminator
+ */
+function serial(list, iterator, callback)
+{
+  return serialOrdered(list, iterator, null, callback);
+}
+
+
+/***/ }),
+
+/***/ 3578:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var iterate    = __nccwpck_require__(9023)
+  , initState  = __nccwpck_require__(2474)
+  , terminator = __nccwpck_require__(7942)
+  ;
+
+// Public API
+module.exports = serialOrdered;
+// sorting helpers
+module.exports.ascending  = ascending;
+module.exports.descending = descending;
+
+/**
+ * Runs iterator over provided sorted array elements in series
+ *
+ * @param   {array|object} list - array or object (named list) to iterate over
+ * @param   {function} iterator - iterator to run
+ * @param   {function} sortMethod - custom sort function
+ * @param   {function} callback - invoked when all elements processed
+ * @returns {function} - jobs terminator
+ */
+function serialOrdered(list, iterator, sortMethod, callback)
+{
+  var state = initState(list, sortMethod);
+
+  iterate(list, iterator, state, function iteratorHandler(error, result)
+  {
+    if (error)
+    {
+      callback(error, result);
+      return;
+    }
+
+    state.index++;
+
+    // are we there yet?
+    if (state.index < (state['keyedList'] || list).length)
+    {
+      iterate(list, iterator, state, iteratorHandler);
+      return;
+    }
+
+    // done here
+    callback(null, state.results);
+  });
+
+  return terminator.bind(state, callback);
+}
+
+/*
+ * -- Sort methods
+ */
+
+/**
+ * sort helper to sort array elements in ascending order
+ *
+ * @param   {mixed} a - an item to compare
+ * @param   {mixed} b - an item to compare
+ * @returns {number} - comparison result
+ */
+function ascending(a, b)
+{
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * sort helper to sort array elements in descending order
+ *
+ * @param   {mixed} a - an item to compare
+ * @param   {mixed} b - an item to compare
+ * @returns {number} - comparison result
+ */
+function descending(a, b)
+{
+  return -1 * ascending(a, b);
+}
+
+
+/***/ }),
+
+/***/ 5443:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var util = __nccwpck_require__(3837);
+var Stream = (__nccwpck_require__(2781).Stream);
+var DelayedStream = __nccwpck_require__(8611);
+
+module.exports = CombinedStream;
+function CombinedStream() {
+  this.writable = false;
+  this.readable = true;
+  this.dataSize = 0;
+  this.maxDataSize = 2 * 1024 * 1024;
+  this.pauseStreams = true;
+
+  this._released = false;
+  this._streams = [];
+  this._currentStream = null;
+  this._insideLoop = false;
+  this._pendingNext = false;
+}
+util.inherits(CombinedStream, Stream);
+
+CombinedStream.create = function(options) {
+  var combinedStream = new this();
+
+  options = options || {};
+  for (var option in options) {
+    combinedStream[option] = options[option];
+  }
+
+  return combinedStream;
+};
+
+CombinedStream.isStreamLike = function(stream) {
+  return (typeof stream !== 'function')
+    && (typeof stream !== 'string')
+    && (typeof stream !== 'boolean')
+    && (typeof stream !== 'number')
+    && (!Buffer.isBuffer(stream));
+};
+
+CombinedStream.prototype.append = function(stream) {
+  var isStreamLike = CombinedStream.isStreamLike(stream);
+
+  if (isStreamLike) {
+    if (!(stream instanceof DelayedStream)) {
+      var newStream = DelayedStream.create(stream, {
+        maxDataSize: Infinity,
+        pauseStream: this.pauseStreams,
+      });
+      stream.on('data', this._checkDataSize.bind(this));
+      stream = newStream;
+    }
+
+    this._handleErrors(stream);
+
+    if (this.pauseStreams) {
+      stream.pause();
+    }
+  }
+
+  this._streams.push(stream);
+  return this;
+};
+
+CombinedStream.prototype.pipe = function(dest, options) {
+  Stream.prototype.pipe.call(this, dest, options);
+  this.resume();
+  return dest;
+};
+
+CombinedStream.prototype._getNext = function() {
+  this._currentStream = null;
+
+  if (this._insideLoop) {
+    this._pendingNext = true;
+    return; // defer call
+  }
+
+  this._insideLoop = true;
+  try {
+    do {
+      this._pendingNext = false;
+      this._realGetNext();
+    } while (this._pendingNext);
+  } finally {
+    this._insideLoop = false;
+  }
+};
+
+CombinedStream.prototype._realGetNext = function() {
+  var stream = this._streams.shift();
+
+
+  if (typeof stream == 'undefined') {
+    this.end();
+    return;
+  }
+
+  if (typeof stream !== 'function') {
+    this._pipeNext(stream);
+    return;
+  }
+
+  var getStream = stream;
+  getStream(function(stream) {
+    var isStreamLike = CombinedStream.isStreamLike(stream);
+    if (isStreamLike) {
+      stream.on('data', this._checkDataSize.bind(this));
+      this._handleErrors(stream);
+    }
+
+    this._pipeNext(stream);
+  }.bind(this));
+};
+
+CombinedStream.prototype._pipeNext = function(stream) {
+  this._currentStream = stream;
+
+  var isStreamLike = CombinedStream.isStreamLike(stream);
+  if (isStreamLike) {
+    stream.on('end', this._getNext.bind(this));
+    stream.pipe(this, {end: false});
+    return;
+  }
+
+  var value = stream;
+  this.write(value);
+  this._getNext();
+};
+
+CombinedStream.prototype._handleErrors = function(stream) {
+  var self = this;
+  stream.on('error', function(err) {
+    self._emitError(err);
+  });
+};
+
+CombinedStream.prototype.write = function(data) {
+  this.emit('data', data);
+};
+
+CombinedStream.prototype.pause = function() {
+  if (!this.pauseStreams) {
+    return;
+  }
+
+  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.pause) == 'function') this._currentStream.pause();
+  this.emit('pause');
+};
+
+CombinedStream.prototype.resume = function() {
+  if (!this._released) {
+    this._released = true;
+    this.writable = true;
+    this._getNext();
+  }
+
+  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.resume) == 'function') this._currentStream.resume();
+  this.emit('resume');
+};
+
+CombinedStream.prototype.end = function() {
+  this._reset();
+  this.emit('end');
+};
+
+CombinedStream.prototype.destroy = function() {
+  this._reset();
+  this.emit('close');
+};
+
+CombinedStream.prototype._reset = function() {
+  this.writable = false;
+  this._streams = [];
+  this._currentStream = null;
+};
+
+CombinedStream.prototype._checkDataSize = function() {
+  this._updateDataSize();
+  if (this.dataSize <= this.maxDataSize) {
+    return;
+  }
+
+  var message =
+    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.';
+  this._emitError(new Error(message));
+};
+
+CombinedStream.prototype._updateDataSize = function() {
+  this.dataSize = 0;
+
+  var self = this;
+  this._streams.forEach(function(stream) {
+    if (!stream.dataSize) {
+      return;
+    }
+
+    self.dataSize += stream.dataSize;
+  });
+
+  if (this._currentStream && this._currentStream.dataSize) {
+    this.dataSize += this._currentStream.dataSize;
+  }
+};
+
+CombinedStream.prototype._emitError = function(err) {
+  this._reset();
+  this.emit('error', err);
+};
+
+
+/***/ }),
+
+/***/ 8611:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Stream = (__nccwpck_require__(2781).Stream);
+var util = __nccwpck_require__(3837);
+
+module.exports = DelayedStream;
+function DelayedStream() {
+  this.source = null;
+  this.dataSize = 0;
+  this.maxDataSize = 1024 * 1024;
+  this.pauseStream = true;
+
+  this._maxDataSizeExceeded = false;
+  this._released = false;
+  this._bufferedEvents = [];
+}
+util.inherits(DelayedStream, Stream);
+
+DelayedStream.create = function(source, options) {
+  var delayedStream = new this();
+
+  options = options || {};
+  for (var option in options) {
+    delayedStream[option] = options[option];
+  }
+
+  delayedStream.source = source;
+
+  var realEmit = source.emit;
+  source.emit = function() {
+    delayedStream._handleEmit(arguments);
+    return realEmit.apply(source, arguments);
+  };
+
+  source.on('error', function() {});
+  if (delayedStream.pauseStream) {
+    source.pause();
+  }
+
+  return delayedStream;
+};
+
+Object.defineProperty(DelayedStream.prototype, 'readable', {
+  configurable: true,
+  enumerable: true,
+  get: function() {
+    return this.source.readable;
+  }
+});
+
+DelayedStream.prototype.setEncoding = function() {
+  return this.source.setEncoding.apply(this.source, arguments);
+};
+
+DelayedStream.prototype.resume = function() {
+  if (!this._released) {
+    this.release();
+  }
+
+  this.source.resume();
+};
+
+DelayedStream.prototype.pause = function() {
+  this.source.pause();
+};
+
+DelayedStream.prototype.release = function() {
+  this._released = true;
+
+  this._bufferedEvents.forEach(function(args) {
+    this.emit.apply(this, args);
+  }.bind(this));
+  this._bufferedEvents = [];
+};
+
+DelayedStream.prototype.pipe = function() {
+  var r = Stream.prototype.pipe.apply(this, arguments);
+  this.resume();
+  return r;
+};
+
+DelayedStream.prototype._handleEmit = function(args) {
+  if (this._released) {
+    this.emit.apply(this, args);
+    return;
+  }
+
+  if (args[0] === 'data') {
+    this.dataSize += args[1].length;
+    this._checkIfMaxDataSizeExceeded();
+  }
+
+  this._bufferedEvents.push(args);
+};
+
+DelayedStream.prototype._checkIfMaxDataSizeExceeded = function() {
+  if (this._maxDataSizeExceeded) {
+    return;
+  }
+
+  if (this.dataSize <= this.maxDataSize) {
+    return;
+  }
+
+  this._maxDataSizeExceeded = true;
+  var message =
+    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.'
+  this.emit('error', new Error(message));
+};
+
+
+/***/ }),
+
+/***/ 4334:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var CombinedStream = __nccwpck_require__(5443);
+var util = __nccwpck_require__(3837);
+var path = __nccwpck_require__(1017);
+var http = __nccwpck_require__(3685);
+var https = __nccwpck_require__(5687);
+var parseUrl = (__nccwpck_require__(7310).parse);
+var fs = __nccwpck_require__(7147);
+var Stream = (__nccwpck_require__(2781).Stream);
+var mime = __nccwpck_require__(3583);
+var asynckit = __nccwpck_require__(4812);
+var populate = __nccwpck_require__(7142);
+
+// Public API
+module.exports = FormData;
+
+// make it a Stream
+util.inherits(FormData, CombinedStream);
+
+/**
+ * Create readable "multipart/form-data" streams.
+ * Can be used to submit forms
+ * and file uploads to other web applications.
+ *
+ * @constructor
+ * @param {Object} options - Properties to be added/overriden for FormData and CombinedStream
+ */
+function FormData(options) {
+  if (!(this instanceof FormData)) {
+    return new FormData(options);
+  }
+
+  this._overheadLength = 0;
+  this._valueLength = 0;
+  this._valuesToMeasure = [];
+
+  CombinedStream.call(this);
+
+  options = options || {};
+  for (var option in options) {
+    this[option] = options[option];
+  }
+}
+
+FormData.LINE_BREAK = '\r\n';
+FormData.DEFAULT_CONTENT_TYPE = 'application/octet-stream';
+
+FormData.prototype.append = function(field, value, options) {
+
+  options = options || {};
+
+  // allow filename as single option
+  if (typeof options == 'string') {
+    options = {filename: options};
+  }
+
+  var append = CombinedStream.prototype.append.bind(this);
+
+  // all that streamy business can't handle numbers
+  if (typeof value == 'number') {
+    value = '' + value;
+  }
+
+  // https://github.com/felixge/node-form-data/issues/38
+  if (util.isArray(value)) {
+    // Please convert your array into string
+    // the way web server expects it
+    this._error(new Error('Arrays are not supported.'));
+    return;
+  }
+
+  var header = this._multiPartHeader(field, value, options);
+  var footer = this._multiPartFooter();
+
+  append(header);
+  append(value);
+  append(footer);
+
+  // pass along options.knownLength
+  this._trackLength(header, value, options);
+};
+
+FormData.prototype._trackLength = function(header, value, options) {
+  var valueLength = 0;
+
+  // used w/ getLengthSync(), when length is known.
+  // e.g. for streaming directly from a remote server,
+  // w/ a known file a size, and not wanting to wait for
+  // incoming file to finish to get its size.
+  if (options.knownLength != null) {
+    valueLength += +options.knownLength;
+  } else if (Buffer.isBuffer(value)) {
+    valueLength = value.length;
+  } else if (typeof value === 'string') {
+    valueLength = Buffer.byteLength(value);
+  }
+
+  this._valueLength += valueLength;
+
+  // @check why add CRLF? does this account for custom/multiple CRLFs?
+  this._overheadLength +=
+    Buffer.byteLength(header) +
+    FormData.LINE_BREAK.length;
+
+  // empty or either doesn't have path or not an http response or not a stream
+  if (!value || ( !value.path && !(value.readable && value.hasOwnProperty('httpVersion')) && !(value instanceof Stream))) {
+    return;
+  }
+
+  // no need to bother with the length
+  if (!options.knownLength) {
+    this._valuesToMeasure.push(value);
+  }
+};
+
+FormData.prototype._lengthRetriever = function(value, callback) {
+
+  if (value.hasOwnProperty('fd')) {
+
+    // take read range into a account
+    // `end` = Infinity –> read file till the end
+    //
+    // TODO: Looks like there is bug in Node fs.createReadStream
+    // it doesn't respect `end` options without `start` options
+    // Fix it when node fixes it.
+    // https://github.com/joyent/node/issues/7819
+    if (value.end != undefined && value.end != Infinity && value.start != undefined) {
+
+      // when end specified
+      // no need to calculate range
+      // inclusive, starts with 0
+      callback(null, value.end + 1 - (value.start ? value.start : 0));
+
+    // not that fast snoopy
+    } else {
+      // still need to fetch file size from fs
+      fs.stat(value.path, function(err, stat) {
+
+        var fileSize;
+
+        if (err) {
+          callback(err);
+          return;
+        }
+
+        // update final size based on the range options
+        fileSize = stat.size - (value.start ? value.start : 0);
+        callback(null, fileSize);
+      });
+    }
+
+  // or http response
+  } else if (value.hasOwnProperty('httpVersion')) {
+    callback(null, +value.headers['content-length']);
+
+  // or request stream http://github.com/mikeal/request
+  } else if (value.hasOwnProperty('httpModule')) {
+    // wait till response come back
+    value.on('response', function(response) {
+      value.pause();
+      callback(null, +response.headers['content-length']);
+    });
+    value.resume();
+
+  // something else
+  } else {
+    callback('Unknown stream');
+  }
+};
+
+FormData.prototype._multiPartHeader = function(field, value, options) {
+  // custom header specified (as string)?
+  // it becomes responsible for boundary
+  // (e.g. to handle extra CRLFs on .NET servers)
+  if (typeof options.header == 'string') {
+    return options.header;
+  }
+
+  var contentDisposition = this._getContentDisposition(value, options);
+  var contentType = this._getContentType(value, options);
+
+  var contents = '';
+  var headers  = {
+    // add custom disposition as third element or keep it two elements if not
+    'Content-Disposition': ['form-data', 'name="' + field + '"'].concat(contentDisposition || []),
+    // if no content type. allow it to be empty array
+    'Content-Type': [].concat(contentType || [])
+  };
+
+  // allow custom headers.
+  if (typeof options.header == 'object') {
+    populate(headers, options.header);
+  }
+
+  var header;
+  for (var prop in headers) {
+    if (!headers.hasOwnProperty(prop)) continue;
+    header = headers[prop];
+
+    // skip nullish headers.
+    if (header == null) {
+      continue;
+    }
+
+    // convert all headers to arrays.
+    if (!Array.isArray(header)) {
+      header = [header];
+    }
+
+    // add non-empty headers.
+    if (header.length) {
+      contents += prop + ': ' + header.join('; ') + FormData.LINE_BREAK;
+    }
+  }
+
+  return '--' + this.getBoundary() + FormData.LINE_BREAK + contents + FormData.LINE_BREAK;
+};
+
+FormData.prototype._getContentDisposition = function(value, options) {
+
+  var filename
+    , contentDisposition
+    ;
+
+  if (typeof options.filepath === 'string') {
+    // custom filepath for relative paths
+    filename = path.normalize(options.filepath).replace(/\\/g, '/');
+  } else if (options.filename || value.name || value.path) {
+    // custom filename take precedence
+    // formidable and the browser add a name property
+    // fs- and request- streams have path property
+    filename = path.basename(options.filename || value.name || value.path);
+  } else if (value.readable && value.hasOwnProperty('httpVersion')) {
+    // or try http response
+    filename = path.basename(value.client._httpMessage.path || '');
+  }
+
+  if (filename) {
+    contentDisposition = 'filename="' + filename + '"';
+  }
+
+  return contentDisposition;
+};
+
+FormData.prototype._getContentType = function(value, options) {
+
+  // use custom content-type above all
+  var contentType = options.contentType;
+
+  // or try `name` from formidable, browser
+  if (!contentType && value.name) {
+    contentType = mime.lookup(value.name);
+  }
+
+  // or try `path` from fs-, request- streams
+  if (!contentType && value.path) {
+    contentType = mime.lookup(value.path);
+  }
+
+  // or if it's http-reponse
+  if (!contentType && value.readable && value.hasOwnProperty('httpVersion')) {
+    contentType = value.headers['content-type'];
+  }
+
+  // or guess it from the filepath or filename
+  if (!contentType && (options.filepath || options.filename)) {
+    contentType = mime.lookup(options.filepath || options.filename);
+  }
+
+  // fallback to the default content type if `value` is not simple value
+  if (!contentType && typeof value == 'object') {
+    contentType = FormData.DEFAULT_CONTENT_TYPE;
+  }
+
+  return contentType;
+};
+
+FormData.prototype._multiPartFooter = function() {
+  return function(next) {
+    var footer = FormData.LINE_BREAK;
+
+    var lastPart = (this._streams.length === 0);
+    if (lastPart) {
+      footer += this._lastBoundary();
+    }
+
+    next(footer);
+  }.bind(this);
+};
+
+FormData.prototype._lastBoundary = function() {
+  return '--' + this.getBoundary() + '--' + FormData.LINE_BREAK;
+};
+
+FormData.prototype.getHeaders = function(userHeaders) {
+  var header;
+  var formHeaders = {
+    'content-type': 'multipart/form-data; boundary=' + this.getBoundary()
+  };
+
+  for (header in userHeaders) {
+    if (userHeaders.hasOwnProperty(header)) {
+      formHeaders[header.toLowerCase()] = userHeaders[header];
+    }
+  }
+
+  return formHeaders;
+};
+
+FormData.prototype.setBoundary = function(boundary) {
+  this._boundary = boundary;
+};
+
+FormData.prototype.getBoundary = function() {
+  if (!this._boundary) {
+    this._generateBoundary();
+  }
+
+  return this._boundary;
+};
+
+FormData.prototype.getBuffer = function() {
+  var dataBuffer = new Buffer.alloc( 0 );
+  var boundary = this.getBoundary();
+
+  // Create the form content. Add Line breaks to the end of data.
+  for (var i = 0, len = this._streams.length; i < len; i++) {
+    if (typeof this._streams[i] !== 'function') {
+
+      // Add content to the buffer.
+      if(Buffer.isBuffer(this._streams[i])) {
+        dataBuffer = Buffer.concat( [dataBuffer, this._streams[i]]);
+      }else {
+        dataBuffer = Buffer.concat( [dataBuffer, Buffer.from(this._streams[i])]);
+      }
+
+      // Add break after content.
+      if (typeof this._streams[i] !== 'string' || this._streams[i].substring( 2, boundary.length + 2 ) !== boundary) {
+        dataBuffer = Buffer.concat( [dataBuffer, Buffer.from(FormData.LINE_BREAK)] );
+      }
+    }
+  }
+
+  // Add the footer and return the Buffer object.
+  return Buffer.concat( [dataBuffer, Buffer.from(this._lastBoundary())] );
+};
+
+FormData.prototype._generateBoundary = function() {
+  // This generates a 50 character boundary similar to those used by Firefox.
+  // They are optimized for boyer-moore parsing.
+  var boundary = '--------------------------';
+  for (var i = 0; i < 24; i++) {
+    boundary += Math.floor(Math.random() * 10).toString(16);
+  }
+
+  this._boundary = boundary;
+};
+
+// Note: getLengthSync DOESN'T calculate streams length
+// As workaround one can calculate file size manually
+// and add it as knownLength option
+FormData.prototype.getLengthSync = function() {
+  var knownLength = this._overheadLength + this._valueLength;
+
+  // Don't get confused, there are 3 "internal" streams for each keyval pair
+  // so it basically checks if there is any value added to the form
+  if (this._streams.length) {
+    knownLength += this._lastBoundary().length;
+  }
+
+  // https://github.com/form-data/form-data/issues/40
+  if (!this.hasKnownLength()) {
+    // Some async length retrievers are present
+    // therefore synchronous length calculation is false.
+    // Please use getLength(callback) to get proper length
+    this._error(new Error('Cannot calculate proper length in synchronous way.'));
+  }
+
+  return knownLength;
+};
+
+// Public API to check if length of added values is known
+// https://github.com/form-data/form-data/issues/196
+// https://github.com/form-data/form-data/issues/262
+FormData.prototype.hasKnownLength = function() {
+  var hasKnownLength = true;
+
+  if (this._valuesToMeasure.length) {
+    hasKnownLength = false;
+  }
+
+  return hasKnownLength;
+};
+
+FormData.prototype.getLength = function(cb) {
+  var knownLength = this._overheadLength + this._valueLength;
+
+  if (this._streams.length) {
+    knownLength += this._lastBoundary().length;
+  }
+
+  if (!this._valuesToMeasure.length) {
+    process.nextTick(cb.bind(this, null, knownLength));
+    return;
+  }
+
+  asynckit.parallel(this._valuesToMeasure, this._lengthRetriever, function(err, values) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    values.forEach(function(length) {
+      knownLength += length;
+    });
+
+    cb(null, knownLength);
+  });
+};
+
+FormData.prototype.submit = function(params, cb) {
+  var request
+    , options
+    , defaults = {method: 'post'}
+    ;
+
+  // parse provided url if it's string
+  // or treat it as options object
+  if (typeof params == 'string') {
+
+    params = parseUrl(params);
+    options = populate({
+      port: params.port,
+      path: params.pathname,
+      host: params.hostname,
+      protocol: params.protocol
+    }, defaults);
+
+  // use custom params
+  } else {
+
+    options = populate(params, defaults);
+    // if no port provided use default one
+    if (!options.port) {
+      options.port = options.protocol == 'https:' ? 443 : 80;
+    }
+  }
+
+  // put that good code in getHeaders to some use
+  options.headers = this.getHeaders(params.headers);
+
+  // https if specified, fallback to http in any other case
+  if (options.protocol == 'https:') {
+    request = https.request(options);
+  } else {
+    request = http.request(options);
+  }
+
+  // get content length and fire away
+  this.getLength(function(err, length) {
+    if (err && err !== 'Unknown stream') {
+      this._error(err);
+      return;
+    }
+
+    // add content length
+    if (length) {
+      request.setHeader('Content-Length', length);
+    }
+
+    this.pipe(request);
+    if (cb) {
+      var onResponse;
+
+      var callback = function (error, responce) {
+        request.removeListener('error', callback);
+        request.removeListener('response', onResponse);
+
+        return cb.call(this, error, responce);
+      };
+
+      onResponse = callback.bind(this, null);
+
+      request.on('error', callback);
+      request.on('response', onResponse);
+    }
+  }.bind(this));
+
+  return request;
+};
+
+FormData.prototype._error = function(err) {
+  if (!this.error) {
+    this.error = err;
+    this.pause();
+    this.emit('error', err);
+  }
+};
+
+FormData.prototype.toString = function () {
+  return '[object FormData]';
+};
+
+
+/***/ }),
+
+/***/ 7142:
+/***/ ((module) => {
+
+// populates missing values
+module.exports = function(dst, src) {
+
+  Object.keys(src).forEach(function(prop)
+  {
+    dst[prop] = dst[prop] || src[prop];
+  });
+
+  return dst;
+};
+
+
+/***/ }),
+
+/***/ 4766:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getApplicativeComposition = exports.getApplicativeMonoid = void 0;
+/**
+ * The `Applicative` type class extends the `Apply` type class with a `of` function, which can be used to create values
+ * of type `f a` from values of type `a`.
+ *
+ * Where `Apply` provides the ability to lift functions of two or more arguments to functions whose arguments are
+ * wrapped using `f`, and `Functor` provides the ability to lift functions of one argument, `pure` can be seen as the
+ * function which lifts functions of _zero_ arguments. That is, `Applicative` functors support a lifting operation for
+ * any number of function arguments.
+ *
+ * Instances must satisfy the following laws in addition to the `Apply` laws:
+ *
+ * 1. Identity: `A.ap(A.of(a => a), fa) <-> fa`
+ * 2. Homomorphism: `A.ap(A.of(ab), A.of(a)) <-> A.of(ab(a))`
+ * 3. Interchange: `A.ap(fab, A.of(a)) <-> A.ap(A.of(ab => ab(a)), fab)`
+ *
+ * Note. `Functor`'s `map` can be derived: `A.map(x, f) = A.ap(A.of(f), x)`
+ *
+ * @since 2.0.0
+ */
+var Apply_1 = __nccwpck_require__(205);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+function getApplicativeMonoid(F) {
+    var f = (0, Apply_1.getApplySemigroup)(F);
+    return function (M) { return ({
+        concat: f(M).concat,
+        empty: F.of(M.empty)
+    }); };
+}
+exports.getApplicativeMonoid = getApplicativeMonoid;
+/** @deprecated */
+function getApplicativeComposition(F, G) {
+    var map = (0, Functor_1.getFunctorComposition)(F, G).map;
+    var _ap = (0, Apply_1.ap)(F, G);
+    return {
+        map: map,
+        of: function (a) { return F.of(G.of(a)); },
+        ap: function (fgab, fga) { return (0, function_1.pipe)(fgab, _ap(fga)); }
+    };
+}
+exports.getApplicativeComposition = getApplicativeComposition;
+
+
+/***/ }),
+
+/***/ 205:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sequenceS = exports.sequenceT = exports.getApplySemigroup = exports.apS = exports.apSecond = exports.apFirst = exports.ap = void 0;
+/**
+ * The `Apply` class provides the `ap` which is used to apply a function to an argument under a type constructor.
+ *
+ * `Apply` can be used to lift functions of two or more arguments to work on values wrapped with the type constructor
+ * `f`.
+ *
+ * Instances must satisfy the following law in addition to the `Functor` laws:
+ *
+ * 1. Associative composition: `F.ap(F.ap(F.map(fbc, bc => ab => a => bc(ab(a))), fab), fa) <-> F.ap(fbc, F.ap(fab, fa))`
+ *
+ * Formally, `Apply` represents a strong lax semi-monoidal endofunctor.
+ *
+ * @example
+ * import * as O from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const f = (a: string) => (b: number) => (c: boolean) => a + String(b) + String(c)
+ * const fa: O.Option<string> = O.some('s')
+ * const fb: O.Option<number> = O.some(1)
+ * const fc: O.Option<boolean> = O.some(true)
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     // lift a function
+ *     O.some(f),
+ *     // apply the first argument
+ *     O.ap(fa),
+ *     // apply the second argument
+ *     O.ap(fb),
+ *     // apply the third argument
+ *     O.ap(fc)
+ *   ),
+ *   O.some('s1true')
+ * )
+ *
+ * @since 2.0.0
+ */
+var function_1 = __nccwpck_require__(6985);
+var _ = __importStar(__nccwpck_require__(1840));
+function ap(F, G) {
+    return function (fa) {
+        return function (fab) {
+            return F.ap(F.map(fab, function (gab) { return function (ga) { return G.ap(gab, ga); }; }), fa);
+        };
+    };
+}
+exports.ap = ap;
+function apFirst(A) {
+    return function (second) { return function (first) {
+        return A.ap(A.map(first, function (a) { return function () { return a; }; }), second);
+    }; };
+}
+exports.apFirst = apFirst;
+function apSecond(A) {
+    return function (second) {
+        return function (first) {
+            return A.ap(A.map(first, function () { return function (b) { return b; }; }), second);
+        };
+    };
+}
+exports.apSecond = apSecond;
+function apS(F) {
+    return function (name, fb) {
+        return function (fa) {
+            return F.ap(F.map(fa, function (a) { return function (b) {
+                var _a;
+                return Object.assign({}, a, (_a = {}, _a[name] = b, _a));
+            }; }), fb);
+        };
+    };
+}
+exports.apS = apS;
+function getApplySemigroup(F) {
+    return function (S) { return ({
+        concat: function (first, second) {
+            return F.ap(F.map(first, function (x) { return function (y) { return S.concat(x, y); }; }), second);
+        }
+    }); };
+}
+exports.getApplySemigroup = getApplySemigroup;
+function curried(f, n, acc) {
+    return function (x) {
+        var combined = Array(acc.length + 1);
+        for (var i = 0; i < acc.length; i++) {
+            combined[i] = acc[i];
+        }
+        combined[acc.length] = x;
+        return n === 0 ? f.apply(null, combined) : curried(f, n - 1, combined);
+    };
+}
+var tupleConstructors = {
+    1: function (a) { return [a]; },
+    2: function (a) { return function (b) { return [a, b]; }; },
+    3: function (a) { return function (b) { return function (c) { return [a, b, c]; }; }; },
+    4: function (a) { return function (b) { return function (c) { return function (d) { return [a, b, c, d]; }; }; }; },
+    5: function (a) { return function (b) { return function (c) { return function (d) { return function (e) { return [a, b, c, d, e]; }; }; }; }; }
+};
+function getTupleConstructor(len) {
+    if (!_.has.call(tupleConstructors, len)) {
+        tupleConstructors[len] = curried(function_1.tuple, len - 1, []);
+    }
+    return tupleConstructors[len];
+}
+function sequenceT(F) {
+    return function () {
+        var args = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            args[_i] = arguments[_i];
+        }
+        var len = args.length;
+        var f = getTupleConstructor(len);
+        var fas = F.map(args[0], f);
+        for (var i = 1; i < len; i++) {
+            fas = F.ap(fas, args[i]);
+        }
+        return fas;
+    };
+}
+exports.sequenceT = sequenceT;
+function getRecordConstructor(keys) {
+    var len = keys.length;
+    switch (len) {
+        case 1:
+            return function (a) {
+                var _a;
+                return (_a = {}, _a[keys[0]] = a, _a);
+            };
+        case 2:
+            return function (a) { return function (b) {
+                var _a;
+                return (_a = {}, _a[keys[0]] = a, _a[keys[1]] = b, _a);
+            }; };
+        case 3:
+            return function (a) { return function (b) { return function (c) {
+                var _a;
+                return (_a = {}, _a[keys[0]] = a, _a[keys[1]] = b, _a[keys[2]] = c, _a);
+            }; }; };
+        case 4:
+            return function (a) { return function (b) { return function (c) { return function (d) {
+                var _a;
+                return (_a = {},
+                    _a[keys[0]] = a,
+                    _a[keys[1]] = b,
+                    _a[keys[2]] = c,
+                    _a[keys[3]] = d,
+                    _a);
+            }; }; }; };
+        case 5:
+            return function (a) { return function (b) { return function (c) { return function (d) { return function (e) {
+                var _a;
+                return (_a = {},
+                    _a[keys[0]] = a,
+                    _a[keys[1]] = b,
+                    _a[keys[2]] = c,
+                    _a[keys[3]] = d,
+                    _a[keys[4]] = e,
+                    _a);
+            }; }; }; }; };
+        default:
+            return curried(function () {
+                var args = [];
+                for (var _i = 0; _i < arguments.length; _i++) {
+                    args[_i] = arguments[_i];
+                }
+                var r = {};
+                for (var i = 0; i < len; i++) {
+                    r[keys[i]] = args[i];
+                }
+                return r;
+            }, len - 1, []);
+    }
+}
+function sequenceS(F) {
+    return function (r) {
+        var keys = Object.keys(r);
+        var len = keys.length;
+        var f = getRecordConstructor(keys);
+        var fr = F.map(r[keys[0]], f);
+        for (var i = 1; i < len; i++) {
+            fr = F.ap(fr, r[keys[i]]);
+        }
+        return fr;
+    };
+}
+exports.sequenceS = sequenceS;
+
+
+/***/ }),
+
+/***/ 3834:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.lefts = exports.rights = exports.reverse = exports.modifyAt = exports.deleteAt = exports.updateAt = exports.insertAt = exports.copy = exports.findLastIndex = exports.findLastMap = exports.findLast = exports.findFirstMap = exports.findFirst = exports.findIndex = exports.dropLeftWhile = exports.dropRight = exports.dropLeft = exports.spanLeft = exports.takeLeftWhile = exports.takeRight = exports.takeLeft = exports.init = exports.tail = exports.last = exports.head = exports.lookup = exports.isOutOfBound = exports.size = exports.scanRight = exports.scanLeft = exports.chainWithIndex = exports.foldRight = exports.matchRight = exports.matchRightW = exports.foldLeft = exports.matchLeft = exports.matchLeftW = exports.match = exports.matchW = exports.fromEither = exports.fromOption = exports.fromPredicate = exports.replicate = exports.makeBy = exports.appendW = exports.append = exports.prependW = exports.prepend = exports.isNonEmpty = exports.isEmpty = void 0;
+exports.traverseWithIndex = exports.sequence = exports.traverse = exports.reduceRightWithIndex = exports.reduceRight = exports.reduceWithIndex = exports.reduce = exports.foldMapWithIndex = exports.foldMap = exports.duplicate = exports.extend = exports.filterWithIndex = exports.alt = exports.altW = exports.partitionMapWithIndex = exports.partitionMap = exports.partitionWithIndex = exports.partition = exports.filter = exports.separate = exports.compact = exports.filterMap = exports.filterMapWithIndex = exports.mapWithIndex = exports.flatten = exports.flatMap = exports.ap = exports.map = exports.zero = exports.of = exports.difference = exports.intersection = exports.union = exports.concat = exports.concatW = exports.comprehension = exports.fromOptionK = exports.chunksOf = exports.splitAt = exports.chop = exports.sortBy = exports.uniq = exports.elem = exports.rotate = exports.intersperse = exports.prependAll = exports.unzip = exports.zip = exports.zipWith = exports.sort = void 0;
+exports.some = exports.every = exports.unsafeDeleteAt = exports.unsafeUpdateAt = exports.unsafeInsertAt = exports.fromEitherK = exports.FromEither = exports.filterE = exports.ChainRecBreadthFirst = exports.chainRecBreadthFirst = exports.ChainRecDepthFirst = exports.chainRecDepthFirst = exports.Witherable = exports.TraversableWithIndex = exports.Traversable = exports.FoldableWithIndex = exports.Foldable = exports.FilterableWithIndex = exports.Filterable = exports.Compactable = exports.Extend = exports.Alternative = exports.guard = exports.Zero = exports.Alt = exports.Unfoldable = exports.Monad = exports.chainFirst = exports.Chain = exports.Applicative = exports.apSecond = exports.apFirst = exports.Apply = exports.FunctorWithIndex = exports.Pointed = exports.flap = exports.Functor = exports.getDifferenceMagma = exports.getIntersectionSemigroup = exports.getUnionMonoid = exports.getUnionSemigroup = exports.getOrd = exports.getEq = exports.getMonoid = exports.getSemigroup = exports.getShow = exports.URI = exports.unfold = exports.wilt = exports.wither = void 0;
+exports.array = exports.prependToAll = exports.snoc = exports.cons = exports.empty = exports.range = exports.chain = exports.apS = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.intercalate = exports.exists = void 0;
+var Apply_1 = __nccwpck_require__(205);
+var Chain_1 = __nccwpck_require__(2372);
+var FromEither_1 = __nccwpck_require__(1964);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var NEA = __importStar(__nccwpck_require__(240));
+var RA = __importStar(__nccwpck_require__(4234));
+var Separated_1 = __nccwpck_require__(5877);
+var Witherable_1 = __nccwpck_require__(4384);
+var Zero_1 = __nccwpck_require__(9734);
+// -------------------------------------------------------------------------------------
+// refinements
+// -------------------------------------------------------------------------------------
+/**
+ * Test whether an array is empty
+ *
+ * @example
+ * import { isEmpty } from 'fp-ts/Array'
+ *
+ * assert.strictEqual(isEmpty([]), true)
+ * assert.strictEqual(isEmpty(['a']), false)
+ *
+ * @category refinements
+ * @since 2.0.0
+ */
+var isEmpty = function (as) { return as.length === 0; };
+exports.isEmpty = isEmpty;
+/**
+ * Test whether an array is non empty narrowing down the type to `NonEmptyArray<A>`
+ *
+ * @example
+ * import { isNonEmpty } from 'fp-ts/Array'
+ *
+ * assert.strictEqual(isNonEmpty([]), false)
+ * assert.strictEqual(isNonEmpty(['a']), true)
+ *
+ * @category refinements
+ * @since 2.0.0
+ */
+exports.isNonEmpty = NEA.isNonEmpty;
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * Prepend an element to the front of a `Array`, creating a new `NonEmptyArray`.
+ *
+ * @example
+ * import { prepend } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([2, 3, 4], prepend(1)), [1, 2, 3, 4])
+ *
+ * @since 2.10.0
+ */
+exports.prepend = NEA.prepend;
+/**
+ * Less strict version of [`prepend`](#prepend).
+ *
+ * @example
+ * import { prependW } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([2, 3, 4], prependW("a")), ["a", 2, 3, 4]);
+ *
+ * @since 2.11.0
+ */
+exports.prependW = NEA.prependW;
+/**
+ * Append an element to the end of a `Array`, creating a new `NonEmptyArray`.
+ *
+ * @example
+ * import { append } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([1, 2, 3], append(4)), [1, 2, 3, 4])
+ *
+ * @since 2.10.0
+ */
+exports.append = NEA.append;
+/**
+ * Less strict version of [`append`](#append).
+ *
+ * @example
+ * import { appendW } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([1, 2, 3], appendW("d")), [1, 2, 3, "d"]);
+ *
+ * @since 2.11.0
+ */
+exports.appendW = NEA.appendW;
+/**
+ * Return a `Array` of length `n` with element `i` initialized with `f(i)`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { makeBy } from 'fp-ts/Array'
+ *
+ * const double = (i: number): number => i * 2
+ * assert.deepStrictEqual(makeBy(5, double), [0, 2, 4, 6, 8])
+ * assert.deepStrictEqual(makeBy(-3, double), [])
+ * assert.deepStrictEqual(makeBy(4.32164, double), [0, 2, 4, 6])
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+var makeBy = function (n, f) { return (n <= 0 ? [] : NEA.makeBy(f)(n)); };
+exports.makeBy = makeBy;
+/**
+ * Create a `Array` containing a value repeated the specified number of times.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { replicate } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(replicate(3, 'a'), ['a', 'a', 'a'])
+ * assert.deepStrictEqual(replicate(-3, 'a'), [])
+ * assert.deepStrictEqual(replicate(2.985647, 'a'), ['a', 'a'])
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+var replicate = function (n, a) { return (0, exports.makeBy)(n, function () { return a; }); };
+exports.replicate = replicate;
+function fromPredicate(predicate) {
+    return function (a) { return (predicate(a) ? [a] : []); };
+}
+exports.fromPredicate = fromPredicate;
+// -------------------------------------------------------------------------------------
+// conversions
+// -------------------------------------------------------------------------------------
+/**
+ * Create an array from an `Option`. The resulting array will contain the content of the
+ * `Option` if it is `Some` and it will be empty if the `Option` is `None`.
+ *
+ * @example
+ * import { fromOption } from 'fp-ts/Array'
+ * import { option } from "fp-ts";
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe(option.some("a"), fromOption),["a"])
+ * assert.deepStrictEqual(pipe(option.none, fromOption),[])
+ *
+ * @category conversions
+ * @since 2.11.0
+ */
+var fromOption = function (ma) { return (_.isNone(ma) ? [] : [ma.value]); };
+exports.fromOption = fromOption;
+/**
+ * Create an array from an `Either`. The resulting array will contain the content of the
+ * `Either` if it is `Right` and it will be empty if the `Either` is `Left`.
+ *
+ * @example
+ * import { fromEither } from 'fp-ts/Array'
+ * import { either } from "fp-ts";
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe(either.right("r"), fromEither), ["r"]);
+ * assert.deepStrictEqual(pipe(either.left("l"), fromEither), []);
+ *
+ * @category conversions
+ * @since 2.11.0
+ */
+var fromEither = function (e) { return (_.isLeft(e) ? [] : [e.right]); };
+exports.fromEither = fromEither;
+/**
+ * Less strict version of [`match`](#match).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return types will be merged.
+ *
+ * @example
+ * import { matchW } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const matcherW = matchW(
+ *   () => "No elements",
+ *   (as) => as.length
+ * );
+ * assert.deepStrictEqual(pipe([1, 2, 3, 4], matcherW), 4);
+ * assert.deepStrictEqual(pipe([], matcherW), "No elements");
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchW = function (onEmpty, onNonEmpty) {
+    return function (as) {
+        return (0, exports.isNonEmpty)(as) ? onNonEmpty(as) : onEmpty();
+    };
+};
+exports.matchW = matchW;
+/**
+ * Takes an array, if the array is empty it returns the result of `onEmpty`, otherwise
+ * it passes the array to `onNonEmpty` and returns the result.
+ *
+ * @example
+ * import { match } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const matcher = match(
+ *   () => "No elements",
+ *   (as) => `Found ${as.length} element(s)`
+ * );
+ * assert.deepStrictEqual(pipe([1, 2, 3, 4], matcher), "Found 4 element(s)");
+ * assert.deepStrictEqual(pipe([], matcher), "No elements");
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+exports.match = exports.matchW;
+/**
+ * Less strict version of [`matchLeft`](#matchleft). It will work when `onEmpty` and
+ * `onNonEmpty` have different return types.
+ *
+ * @example
+ * import { matchLeftW } from 'fp-ts/Array'
+ *
+ * const f = matchLeftW(
+ *   () => 0,
+ *   (head: string, tail: string[]) => `Found "${head}" followed by ${tail.length} elements`
+ * );
+ * assert.strictEqual(f(["a", "b", "c"]), 'Found "a" followed by 2 elements');
+ * assert.strictEqual(f([]), 0);
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchLeftW = function (onEmpty, onNonEmpty) {
+    return function (as) {
+        return (0, exports.isNonEmpty)(as) ? onNonEmpty(NEA.head(as), NEA.tail(as)) : onEmpty();
+    };
+};
+exports.matchLeftW = matchLeftW;
+/**
+ * Takes an array, if the array is empty it returns the result of `onEmpty`, otherwise
+ * it passes the array to `onNonEmpty` broken into its first element and remaining elements.
+ *
+ * @example
+ * import { matchLeft } from 'fp-ts/Array'
+ *
+ * const len: <A>(as: Array<A>) => number = matchLeft(() => 0, (_, tail) => 1 + len(tail))
+ * assert.strictEqual(len([1, 2, 3]), 3)
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchLeft = exports.matchLeftW;
+/**
+ * Alias of [`matchLeft`](#matchleft).
+ *
+ * @category pattern matching
+ * @since 2.0.0
+ */
+exports.foldLeft = exports.matchLeft;
+/**
+ * Less strict version of [`matchRight`](#matchright). It will work when `onEmpty` and
+ * `onNonEmpty` have different return types.
+ *
+ * @example
+ * import { matchRightW } from 'fp-ts/Array'
+ *
+ * const f = matchRightW(
+ *   () => 0,
+ *   (head: string[], tail: string) => `Found ${head.length} elements folllowed by "${tail}"`
+ * );
+ * assert.strictEqual(f(["a", "b", "c"]), 'Found 2 elements folllowed by "c"');
+ * assert.strictEqual(f([]), 0);
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchRightW = function (onEmpty, onNonEmpty) {
+    return function (as) {
+        return (0, exports.isNonEmpty)(as) ? onNonEmpty(NEA.init(as), NEA.last(as)) : onEmpty();
+    };
+};
+exports.matchRightW = matchRightW;
+/**
+ * Takes an array, if the array is empty it returns the result of `onEmpty`, otherwise
+ * it passes the array to `onNonEmpty` broken  into its initial elements and the last element.
+ *
+ * @example
+ * import { matchRight } from 'fp-ts/Array'
+ *
+ * const len: <A>(as: Array<A>) => number = matchRight(
+ *   () => 0,
+ *   (head, _) => 1 + len(head)
+ * );
+ * assert.strictEqual(len([1, 2, 3]), 3);
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchRight = exports.matchRightW;
+/**
+ * Alias of [`matchRight`](#matchright).
+ *
+ * @category pattern matching
+ * @since 2.0.0
+ */
+exports.foldRight = exports.matchRight;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * Same as [`chain`](#chain), but passing also the index to the iterating function.
+ *
+ * @example
+ * import { chainWithIndex, replicate } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const f = (index: number, x: string) => replicate(2, `${x}${index}`);
+ * assert.deepStrictEqual(pipe(["a", "b", "c"], chainWithIndex(f)), ["a0", "a0", "b1", "b1", "c2", "c2"]);
+ *
+ * @category sequencing
+ * @since 2.7.0
+ */
+var chainWithIndex = function (f) {
+    return function (as) {
+        var out = [];
+        for (var i = 0; i < as.length; i++) {
+            out.push.apply(out, f(i, as[i]));
+        }
+        return out;
+    };
+};
+exports.chainWithIndex = chainWithIndex;
+/**
+ * Same as `reduce` but it carries over the intermediate steps
+ *
+ * @example
+ * import { scanLeft } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(scanLeft(10, (b, a: number) => b - a)([1, 2, 3]), [10, 9, 7, 4])
+ *
+ * @since 2.0.0
+ */
+var scanLeft = function (b, f) {
+    return function (as) {
+        var len = as.length;
+        var out = new Array(len + 1);
+        out[0] = b;
+        for (var i = 0; i < len; i++) {
+            out[i + 1] = f(out[i], as[i]);
+        }
+        return out;
+    };
+};
+exports.scanLeft = scanLeft;
+/**
+ * Fold an array from the right, keeping all intermediate results instead of only the final result
+ *
+ * @example
+ * import { scanRight } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(scanRight(10, (a: number, b) => b - a)([1, 2, 3]), [4, 5, 7, 10])
+ *
+ * @since 2.0.0
+ */
+var scanRight = function (b, f) {
+    return function (as) {
+        var len = as.length;
+        var out = new Array(len + 1);
+        out[len] = b;
+        for (var i = len - 1; i >= 0; i--) {
+            out[i] = f(as[i], out[i + 1]);
+        }
+        return out;
+    };
+};
+exports.scanRight = scanRight;
+/**
+ * Calculate the number of elements in a `Array`.
+ *
+ * @example
+ * import { size } from 'fp-ts/Array'
+ *
+ * assert.strictEqual(size(["a","b","c"]),3)
+ *
+ * @since 2.10.0
+ */
+var size = function (as) { return as.length; };
+exports.size = size;
+/**
+ * Test whether an array contains a particular index
+ *
+ * @example
+ * import { isOutOfBound } from 'fp-ts/Array'
+ *
+ * assert.strictEqual(isOutOfBound(1,["a","b","c"]),false)
+ * assert.strictEqual(isOutOfBound(-1,["a","b","c"]),true)
+ * assert.strictEqual(isOutOfBound(3,["a","b","c"]),true)
+ *
+ * @since 2.0.0
+ */
+exports.isOutOfBound = NEA.isOutOfBound;
+// TODO: remove non-curried overloading in v3
+/**
+ * This function provides a safe way to read a value at a particular index from an array.
+ * It returns a `none` if the index is out of bounds, and a `some` of the element if the
+ * index is valid.
+ *
+ * @example
+ * import { lookup } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([1, 2, 3], lookup(1)), some(2))
+ * assert.deepStrictEqual(pipe([1, 2, 3], lookup(3)), none)
+ *
+ * @since 2.0.0
+ */
+exports.lookup = RA.lookup;
+/**
+ * Get the first element in an array, or `None` if the array is empty
+ *
+ * @example
+ * import { head } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(head([1, 2, 3]), some(1))
+ * assert.deepStrictEqual(head([]), none)
+ *
+ * @since 2.0.0
+ */
+exports.head = RA.head;
+/**
+ * Get the last element in an array, or `None` if the array is empty
+ *
+ * @example
+ * import { last } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(last([1, 2, 3]), some(3))
+ * assert.deepStrictEqual(last([]), none)
+ *
+ * @since 2.0.0
+ */
+exports.last = RA.last;
+/**
+ * Get all but the first element of an array, creating a new array, or `None` if the array is empty
+ *
+ * @example
+ * import { tail } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(tail([1, 2, 3]), some([2, 3]))
+ * assert.deepStrictEqual(tail([]), none)
+ *
+ * @since 2.0.0
+ */
+var tail = function (as) { return ((0, exports.isNonEmpty)(as) ? _.some(NEA.tail(as)) : _.none); };
+exports.tail = tail;
+/**
+ * Get all but the last element of an array, creating a new array, or `None` if the array is empty
+ *
+ * @example
+ * import { init } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(init([1, 2, 3]), some([1, 2]))
+ * assert.deepStrictEqual(init([]), none)
+ *
+ * @since 2.0.0
+ */
+var init = function (as) { return ((0, exports.isNonEmpty)(as) ? _.some(NEA.init(as)) : _.none); };
+exports.init = init;
+/**
+ * Keep only a max number of elements from the start of an `Array`, creating a new `Array`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { takeLeft } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(takeLeft(2)([1, 2, 3, 4, 5]), [1, 2]);
+ * assert.deepStrictEqual(takeLeft(7)([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+ * assert.deepStrictEqual(takeLeft(0)([1, 2, 3, 4, 5]), []);
+ * assert.deepStrictEqual(takeLeft(-1)([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+ *
+ * @since 2.0.0
+ */
+var takeLeft = function (n) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(n, as) ? (0, exports.copy)(as) : as.slice(0, n);
+    };
+};
+exports.takeLeft = takeLeft;
+/**
+ * Keep only a max number of elements from the end of an `Array`, creating a new `Array`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { takeRight } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(takeRight(2)([1, 2, 3, 4, 5]), [4, 5]);
+ * assert.deepStrictEqual(takeRight(7)([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+ * assert.deepStrictEqual(takeRight(0)([1, 2, 3, 4, 5]), []);
+ * assert.deepStrictEqual(takeRight(-1)([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+ *
+ * @since 2.0.0
+ */
+var takeRight = function (n) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(n, as) ? (0, exports.copy)(as) : n === 0 ? [] : as.slice(-n);
+    };
+};
+exports.takeRight = takeRight;
+function takeLeftWhile(predicate) {
+    return function (as) {
+        var out = [];
+        for (var _i = 0, as_1 = as; _i < as_1.length; _i++) {
+            var a = as_1[_i];
+            if (!predicate(a)) {
+                break;
+            }
+            out.push(a);
+        }
+        return out;
+    };
+}
+exports.takeLeftWhile = takeLeftWhile;
+var spanLeftIndex = function (as, predicate) {
+    var l = as.length;
+    var i = 0;
+    for (; i < l; i++) {
+        if (!predicate(as[i])) {
+            break;
+        }
+    }
+    return i;
+};
+function spanLeft(predicate) {
+    return function (as) {
+        var _a = (0, exports.splitAt)(spanLeftIndex(as, predicate))(as), init = _a[0], rest = _a[1];
+        return { init: init, rest: rest };
+    };
+}
+exports.spanLeft = spanLeft;
+/**
+ * Creates a new `Array` which is a copy of the input dropping a max number of elements from the start.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { dropLeft } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(dropLeft(2)([1, 2, 3]), [3]);
+ * assert.deepStrictEqual(dropLeft(5)([1, 2, 3]), []);
+ * assert.deepStrictEqual(dropLeft(0)([1, 2, 3]), [1, 2, 3]);
+ * assert.deepStrictEqual(dropLeft(-2)([1, 2, 3]), [1, 2, 3]);
+ *
+ * @since 2.0.0
+ */
+var dropLeft = function (n) {
+    return function (as) {
+        return n <= 0 || (0, exports.isEmpty)(as) ? (0, exports.copy)(as) : n >= as.length ? [] : as.slice(n, as.length);
+    };
+};
+exports.dropLeft = dropLeft;
+/**
+ * Creates a new `Array` which is a copy of the input dropping a max number of elements from the end.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { dropRight } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(dropRight(2)([1, 2, 3]), [1]);
+ * assert.deepStrictEqual(dropRight(5)([1, 2, 3]), []);
+ * assert.deepStrictEqual(dropRight(0)([1, 2, 3]), [1, 2, 3]);
+ * assert.deepStrictEqual(dropRight(-2)([1, 2, 3]), [1, 2, 3]);
+ *
+ * @since 2.0.0
+ */
+var dropRight = function (n) {
+    return function (as) {
+        return n <= 0 || (0, exports.isEmpty)(as) ? (0, exports.copy)(as) : n >= as.length ? [] : as.slice(0, as.length - n);
+    };
+};
+exports.dropRight = dropRight;
+function dropLeftWhile(predicate) {
+    return function (as) { return as.slice(spanLeftIndex(as, predicate)); };
+}
+exports.dropLeftWhile = dropLeftWhile;
+/**
+ * `findIndex` returns an `Option` containing the first index for which a predicate holds.
+ * It returns `None` if no element satisfies the predicate.
+ * Similar to [`findFirst`](#findFirst) but returning the index instead of the element.
+ *
+ * @example
+ * import { findIndex } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(findIndex((n: number) => n === 2)([1, 2, 3]), some(1))
+ * assert.deepStrictEqual(findIndex((n: number) => n === 2)([]), none)
+ *
+ * @since 2.0.0
+ */
+exports.findIndex = RA.findIndex;
+function findFirst(predicate) {
+    return RA.findFirst(predicate);
+}
+exports.findFirst = findFirst;
+/**
+ * Given a selector function which takes an element and returns an option,
+ * this function applies the selector to each element of the array and
+ * returns the first `Some` result. Otherwise it returns `None`.
+ *
+ * @example
+ * import { findFirstMap } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * interface Person {
+ *   readonly name: string;
+ *   readonly age: number;
+ * }
+ *
+ * const persons: Array<Person> = [
+ *   { name: "John", age: 16 },
+ *   { name: "Mary", age: 45 },
+ *   { name: "Joey", age: 28 },
+ * ];
+ *
+ * const nameOfPersonAbove18 = (p: Person) => (p.age <= 18 ? none : some(p.name));
+ * const nameOfPersonAbove70 = (p: Person) => (p.age <= 70 ? none : some(p.name));
+ * assert.deepStrictEqual(findFirstMap(nameOfPersonAbove18)(persons), some("Mary"));
+ * assert.deepStrictEqual(findFirstMap(nameOfPersonAbove70)(persons), none);
+ *
+ * @since 2.0.0
+ */
+exports.findFirstMap = RA.findFirstMap;
+function findLast(predicate) {
+    return RA.findLast(predicate);
+}
+exports.findLast = findLast;
+/**
+ * Given a selector function which takes an element and returns an option,
+ * this function applies the selector to each element of the array starting from the
+ * end and returns the last `Some` result. Otherwise it returns `None`.
+ *
+ * @example
+ * import { findLastMap } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * interface Person {
+ *   readonly name: string;
+ *   readonly age: number;
+ * }
+ *
+ * const persons: Array<Person> = [
+ *   { name: "John", age: 16 },
+ *   { name: "Mary", age: 45 },
+ *   { name: "Joey", age: 28 },
+ * ];
+ *
+ * const nameOfPersonAbove18 = (p: Person) => (p.age <= 18 ? none : some(p.name));
+ * const nameOfPersonAbove70 = (p: Person) => (p.age <= 70 ? none : some(p.name));
+ * assert.deepStrictEqual(findLastMap(nameOfPersonAbove18)(persons), some("Joey"));
+ * assert.deepStrictEqual(findLastMap(nameOfPersonAbove70)(persons), none);
+ *
+ * @since 2.0.0
+ */
+exports.findLastMap = RA.findLastMap;
+/**
+ * Returns the index of the last element of the list which matches the predicate.
+ * It returns an `Option` containing the index or `None` if not found.
+ *
+ * @example
+ * import { findLastIndex } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * interface X {
+ *   readonly a: number
+ *   readonly b: number
+ * }
+ * const xs: Array<X> = [{ a: 1, b: 0 }, { a: 1, b: 1 }]
+ * assert.deepStrictEqual(findLastIndex((x: { readonly a: number }) => x.a === 1)(xs), some(1))
+ * assert.deepStrictEqual(findLastIndex((x: { readonly a: number }) => x.a === 4)(xs), none)
+ *
+ * @since 2.0.0
+ */
+exports.findLastIndex = RA.findLastIndex;
+/**
+ * This function takes an array and makes a new array containing the same elements.
+ *
+ * @since 2.0.0
+ */
+var copy = function (as) { return as.slice(); };
+exports.copy = copy;
+/**
+ * Insert an element at the specified index, creating a new array,
+ * or returning `None` if the index is out of bounds.
+ *
+ * @example
+ * import { insertAt } from 'fp-ts/Array'
+ * import { some } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(insertAt(2, 5)([1, 2, 3, 4]), some([1, 2, 5, 3, 4]))
+ *
+ * @since 2.0.0
+ */
+var insertAt = function (i, a) {
+    return function (as) {
+        return i < 0 || i > as.length ? _.none : _.some((0, exports.unsafeInsertAt)(i, a, as));
+    };
+};
+exports.insertAt = insertAt;
+/**
+ * Change the element at the specified index, creating a new array,
+ * or returning `None` if the index is out of bounds.
+ *
+ * @example
+ * import { updateAt } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(updateAt(1, 1)([1, 2, 3]), some([1, 1, 3]))
+ * assert.deepStrictEqual(updateAt(1, 1)([]), none)
+ *
+ * @since 2.0.0
+ */
+var updateAt = function (i, a) { return (0, exports.modifyAt)(i, function () { return a; }); };
+exports.updateAt = updateAt;
+/**
+ * Delete the element at the specified index, creating a new array, or returning `None` if the index is out of bounds.
+ *
+ * @example
+ * import { deleteAt } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(deleteAt(0)([1, 2, 3]), some([2, 3]))
+ * assert.deepStrictEqual(deleteAt(1)([]), none)
+ *
+ * @since 2.0.0
+ */
+var deleteAt = function (i) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(i, as) ? _.none : _.some((0, exports.unsafeDeleteAt)(i, as));
+    };
+};
+exports.deleteAt = deleteAt;
+/**
+ * Apply a function to the element at the specified index, creating a new array, or returning `None` if the index is out
+ * of bounds.
+ *
+ * @example
+ * import { modifyAt } from 'fp-ts/Array'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * const double = (x: number): number => x * 2
+ * assert.deepStrictEqual(modifyAt(1, double)([1, 2, 3]), some([1, 4, 3]))
+ * assert.deepStrictEqual(modifyAt(1, double)([]), none)
+ *
+ * @since 2.0.0
+ */
+var modifyAt = function (i, f) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(i, as) ? _.none : _.some((0, exports.unsafeUpdateAt)(i, f(as[i]), as));
+    };
+};
+exports.modifyAt = modifyAt;
+/**
+ * Reverse an array, creating a new array
+ *
+ * @example
+ * import { reverse } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(reverse([1, 2, 3]), [3, 2, 1])
+ *
+ * @since 2.0.0
+ */
+var reverse = function (as) { return ((0, exports.isEmpty)(as) ? [] : as.slice().reverse()); };
+exports.reverse = reverse;
+/**
+ * Takes an `Array` of `Either` and produces a new `Array` containing
+ * the values of all the `Right` elements in the same order.
+ *
+ * @example
+ * import { rights } from 'fp-ts/Array'
+ * import { right, left } from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(rights([right(1), left('foo'), right(2)]), [1, 2])
+ *
+ * @since 2.0.0
+ */
+var rights = function (as) {
+    var r = [];
+    for (var i = 0; i < as.length; i++) {
+        var a = as[i];
+        if (a._tag === 'Right') {
+            r.push(a.right);
+        }
+    }
+    return r;
+};
+exports.rights = rights;
+/**
+ * Takes an `Array` of `Either` and produces a new `Array` containing
+ * the values of all the `Left` elements in the same order.
+ *
+ * @example
+ * import { lefts } from 'fp-ts/Array'
+ * import { left, right } from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(lefts([right(1), left('foo'), right(2)]), ['foo'])
+ *
+ * @since 2.0.0
+ */
+var lefts = function (as) {
+    var r = [];
+    for (var i = 0; i < as.length; i++) {
+        var a = as[i];
+        if (a._tag === 'Left') {
+            r.push(a.left);
+        }
+    }
+    return r;
+};
+exports.lefts = lefts;
+/**
+ * Sort the elements of an array in increasing order, creating a new array
+ *
+ * @example
+ * import { sort } from 'fp-ts/Array'
+ * import * as N from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(sort(N.Ord)([3, 2, 1]), [1, 2, 3])
+ *
+ * @since 2.0.0
+ */
+var sort = function (O) {
+    return function (as) {
+        return as.length <= 1 ? (0, exports.copy)(as) : as.slice().sort(O.compare);
+    };
+};
+exports.sort = sort;
+/**
+ * Apply a function to pairs of elements at the same index in two arrays, collecting the results in a new array. If one
+ * input array is short, excess elements of the longer array are discarded.
+ *
+ * @example
+ * import { zipWith } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(zipWith([1, 2, 3], ['a', 'b', 'c', 'd'], (n, s) => s + n), ['a1', 'b2', 'c3'])
+ *
+ * @since 2.0.0
+ */
+var zipWith = function (fa, fb, f) {
+    var fc = [];
+    var len = Math.min(fa.length, fb.length);
+    for (var i = 0; i < len; i++) {
+        fc[i] = f(fa[i], fb[i]);
+    }
+    return fc;
+};
+exports.zipWith = zipWith;
+function zip(as, bs) {
+    if (bs === undefined) {
+        return function (bs) { return zip(bs, as); };
+    }
+    return (0, exports.zipWith)(as, bs, function (a, b) { return [a, b]; });
+}
+exports.zip = zip;
+/**
+ * The function is reverse of `zip`. Takes an array of pairs and return two corresponding arrays
+ *
+ * @example
+ * import { unzip } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(unzip([[1, 'a'], [2, 'b'], [3, 'c']]), [[1, 2, 3], ['a', 'b', 'c']])
+ *
+ * @since 2.0.0
+ */
+var unzip = function (as) {
+    var fa = [];
+    var fb = [];
+    for (var i = 0; i < as.length; i++) {
+        fa[i] = as[i][0];
+        fb[i] = as[i][1];
+    }
+    return [fa, fb];
+};
+exports.unzip = unzip;
+/**
+ * Creates a new `Array`, prepending an element to every member of the input `Array`.
+ *
+ * @example
+ * import { prependAll } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(prependAll(9)([1, 2, 3, 4]), [9, 1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.10.0
+ */
+var prependAll = function (middle) {
+    var f = NEA.prependAll(middle);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : []); };
+};
+exports.prependAll = prependAll;
+/**
+ * Creates a new `Array` placing an element in between members of the input `Array`.
+ *
+ * @example
+ * import { intersperse } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(intersperse(9)([1, 2, 3, 4]), [1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.9.0
+ */
+var intersperse = function (middle) {
+    var f = NEA.intersperse(middle);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : (0, exports.copy)(as)); };
+};
+exports.intersperse = intersperse;
+/**
+ * Creates a new `Array` rotating the input `Array` by `n` steps.
+ *
+ * @example
+ * import { rotate } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(rotate(2)([1, 2, 3, 4, 5]), [4, 5, 1, 2, 3])
+ *
+ * @since 2.0.0
+ */
+var rotate = function (n) {
+    var f = NEA.rotate(n);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : (0, exports.copy)(as)); };
+};
+exports.rotate = rotate;
+// TODO: remove non-curried overloading in v3
+/**
+ * Test if a value is a member of an `Array`. Takes a `Eq<A>` as a single
+ * argument which returns the function to use to search for a value of type `A` in
+ * an `Array<A>`.
+ *
+ * @example
+ * import { elem } from 'fp-ts/Array'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.strictEqual(pipe([1, 2, 3], elem(N.Eq)(2)), true)
+ * assert.strictEqual(pipe([1, 2, 3], elem(N.Eq)(0)), false)
+ *
+ * @since 2.0.0
+ */
+exports.elem = RA.elem;
+/**
+ * Creates a new `Array` removing duplicate elements, keeping the first occurrence of an element,
+ * based on a `Eq<A>`.
+ *
+ * @example
+ * import { uniq } from 'fp-ts/Array'
+ * import * as N from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(uniq(N.Eq)([1, 2, 1]), [1, 2])
+ *
+ * @since 2.0.0
+ */
+var uniq = function (E) {
+    var f = NEA.uniq(E);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : (0, exports.copy)(as)); };
+};
+exports.uniq = uniq;
+/**
+ * Sort the elements of an array in increasing order, where elements are compared using first `ords[0]`, then `ords[1]`,
+ * etc...
+ *
+ * @example
+ * import { sortBy } from 'fp-ts/Array'
+ * import { contramap } from 'fp-ts/Ord'
+ * import * as S from 'fp-ts/string'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * interface Person {
+ *   readonly name: string
+ *   readonly age: number
+ * }
+ * const byName = pipe(S.Ord, contramap((p: Person) => p.name))
+ * const byAge = pipe(N.Ord, contramap((p: Person) => p.age))
+ *
+ * const sortByNameByAge = sortBy([byName, byAge])
+ *
+ * const persons = [{ name: 'a', age: 1 }, { name: 'b', age: 3 }, { name: 'c', age: 2 }, { name: 'b', age: 2 }]
+ * assert.deepStrictEqual(sortByNameByAge(persons), [
+ *   { name: 'a', age: 1 },
+ *   { name: 'b', age: 2 },
+ *   { name: 'b', age: 3 },
+ *   { name: 'c', age: 2 }
+ * ])
+ *
+ * @since 2.0.0
+ */
+var sortBy = function (ords) {
+    var f = NEA.sortBy(ords);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : (0, exports.copy)(as)); };
+};
+exports.sortBy = sortBy;
+/**
+ * A useful recursion pattern for processing an array to produce a new array, often used for "chopping" up the input
+ * array. Typically chop is called with some function that will consume an initial prefix of the array and produce a
+ * value and the rest of the array.
+ *
+ * @example
+ * import { Eq } from 'fp-ts/Eq'
+ * import * as A from 'fp-ts/Array'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const group = <A>(S: Eq<A>): ((as: Array<A>) => Array<Array<A>>) => {
+ *   return A.chop(as => {
+ *     const { init, rest } = pipe(as, A.spanLeft((a: A) => S.equals(a, as[0])))
+ *     return [init, rest]
+ *   })
+ * }
+ * assert.deepStrictEqual(group(N.Eq)([1, 1, 2, 3, 3, 4]), [[1, 1], [2], [3, 3], [4]])
+ *
+ * @since 2.0.0
+ */
+var chop = function (f) {
+    var g = NEA.chop(f);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? g(as) : []); };
+};
+exports.chop = chop;
+/**
+ * Splits an `Array` into two pieces, the first piece has max `n` elements.
+ *
+ * @example
+ * import { splitAt } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(splitAt(2)([1, 2, 3, 4, 5]), [[1, 2], [3, 4, 5]])
+ *
+ * @since 2.0.0
+ */
+var splitAt = function (n) {
+    return function (as) {
+        return n >= 1 && (0, exports.isNonEmpty)(as) ? NEA.splitAt(n)(as) : (0, exports.isEmpty)(as) ? [(0, exports.copy)(as), []] : [[], (0, exports.copy)(as)];
+    };
+};
+exports.splitAt = splitAt;
+/**
+ * Splits an array into length-`n` pieces. The last piece will be shorter if `n` does not evenly divide the length of
+ * the array. Note that `chunksOf(n)([])` is `[]`, not `[[]]`. This is intentional, and is consistent with a recursive
+ * definition of `chunksOf`; it satisfies the property that
+ *
+ * ```ts
+ * chunksOf(n)(xs).concat(chunksOf(n)(ys)) == chunksOf(n)(xs.concat(ys)))
+ * ```
+ *
+ * whenever `n` evenly divides the length of `xs`.
+ *
+ * @example
+ * import { chunksOf } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(chunksOf(2)([1, 2, 3, 4, 5]), [[1, 2], [3, 4], [5]])
+ *
+ * @since 2.0.0
+ */
+var chunksOf = function (n) {
+    var f = NEA.chunksOf(n);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : []); };
+};
+exports.chunksOf = chunksOf;
+/**
+ * @category lifting
+ * @since 2.11.0
+ */
+var fromOptionK = function (f) {
+    return function () {
+        var a = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            a[_i] = arguments[_i];
+        }
+        return (0, exports.fromOption)(f.apply(void 0, a));
+    };
+};
+exports.fromOptionK = fromOptionK;
+function comprehension(input, f, g) {
+    if (g === void 0) { g = function () { return true; }; }
+    var go = function (scope, input) {
+        return (0, exports.isNonEmpty)(input)
+            ? (0, exports.flatMap)(NEA.head(input), function (a) { return go((0, function_1.pipe)(scope, (0, exports.append)(a)), NEA.tail(input)); })
+            : g.apply(void 0, scope) ? [f.apply(void 0, scope)]
+                : [];
+    };
+    return go([], input);
+}
+exports.comprehension = comprehension;
+/**
+ * @since 2.11.0
+ */
+var concatW = function (second) {
+    return function (first) {
+        return (0, exports.isEmpty)(first) ? (0, exports.copy)(second) : (0, exports.isEmpty)(second) ? (0, exports.copy)(first) : first.concat(second);
+    };
+};
+exports.concatW = concatW;
+/**
+ * @since 2.11.0
+ */
+exports.concat = exports.concatW;
+function union(E) {
+    var unionE = NEA.union(E);
+    return function (first, second) {
+        if (second === undefined) {
+            var unionE_1 = union(E);
+            return function (second) { return unionE_1(second, first); };
+        }
+        return (0, exports.isNonEmpty)(first) && (0, exports.isNonEmpty)(second)
+            ? unionE(second)(first)
+            : (0, exports.isNonEmpty)(first)
+                ? (0, exports.copy)(first)
+                : (0, exports.copy)(second);
+    };
+}
+exports.union = union;
+function intersection(E) {
+    var elemE = (0, exports.elem)(E);
+    return function (xs, ys) {
+        if (ys === undefined) {
+            var intersectionE_1 = intersection(E);
+            return function (ys) { return intersectionE_1(ys, xs); };
+        }
+        return xs.filter(function (a) { return elemE(a, ys); });
+    };
+}
+exports.intersection = intersection;
+function difference(E) {
+    var elemE = (0, exports.elem)(E);
+    return function (xs, ys) {
+        if (ys === undefined) {
+            var differenceE_1 = difference(E);
+            return function (ys) { return differenceE_1(ys, xs); };
+        }
+        return xs.filter(function (a) { return !elemE(a, ys); });
+    };
+}
+exports.difference = difference;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+/* istanbul ignore next */
+var _mapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.mapWithIndex)(f)); };
+var _ap = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+/* istanbul ignore next */
+var _filter = function (fa, predicate) { return (0, function_1.pipe)(fa, (0, exports.filter)(predicate)); };
+/* istanbul ignore next */
+var _filterMap = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.filterMap)(f)); };
+/* istanbul ignore next */
+var _partition = function (fa, predicate) {
+    return (0, function_1.pipe)(fa, (0, exports.partition)(predicate));
+};
+/* istanbul ignore next */
+var _partitionMap = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.partitionMap)(f)); };
+/* istanbul ignore next */
+var _partitionWithIndex = function (fa, predicateWithIndex) { return (0, function_1.pipe)(fa, (0, exports.partitionWithIndex)(predicateWithIndex)); };
+/* istanbul ignore next */
+var _partitionMapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.partitionMapWithIndex)(f)); };
+/* istanbul ignore next */
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+var _reduce = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduce)(b, f)); };
+/* istanbul ignore next */
+var _foldMap = function (M) {
+    var foldMapM = (0, exports.foldMap)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapM(f)); };
+};
+/* istanbul ignore next */
+var _reduceRight = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduceRight)(b, f)); };
+/* istanbul ignore next */
+var _reduceWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceWithIndex)(b, f));
+};
+/* istanbul ignore next */
+var _foldMapWithIndex = function (M) {
+    var foldMapWithIndexM = (0, exports.foldMapWithIndex)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapWithIndexM(f)); };
+};
+/* istanbul ignore next */
+var _reduceRightWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceRightWithIndex)(b, f));
+};
+/* istanbul ignore next */
+var _filterMapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.filterMapWithIndex)(f)); };
+/* istanbul ignore next */
+var _filterWithIndex = function (fa, predicateWithIndex) { return (0, function_1.pipe)(fa, (0, exports.filterWithIndex)(predicateWithIndex)); };
+/* istanbul ignore next */
+var _extend = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.extend)(f)); };
+/* istanbul ignore next */
+var _traverse = function (F) {
+    var traverseF = (0, exports.traverse)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseF(f)); };
+};
+/* istanbul ignore next */
+var _traverseWithIndex = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseWithIndexF(f)); };
+};
+var _chainRecDepthFirst = RA._chainRecDepthFirst;
+var _chainRecBreadthFirst = RA._chainRecBreadthFirst;
+/**
+ * Given an element of the base type, `of` builds an `Array` containing just that
+ * element of the base type (this is useful for building a `Monad`).
+ *
+ * @example
+ * import { of } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(of("a"), ["a"]);
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.of = NEA.of;
+/**
+ * Makes an empty `Array`, useful for building a [`Monoid`](#Monoid)
+ *
+ * @since 2.7.0
+ */
+var zero = function () { return []; };
+exports.zero = zero;
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: Array<A>) => Array<B>`.
+ * In practice it applies the base function to each element of the array and collects the
+ * results in a new array.
+ *
+ * @example
+ * import { map } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const f = (n: number) => n * 2;
+ * assert.deepStrictEqual(pipe([1, 2, 3], map(f)), [2, 4, 6]);
+ *
+ * @category mapping
+ * @since 2.0.0
+ */
+var map = function (f) { return function (fa) { return fa.map(function (a) { return f(a); }); }; };
+exports.map = map;
+/**
+ * @example
+ * import { ap, map, of } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * // a curried function with 3 input parameteres
+ * const f = (s1: string) => (n: number) => (s2: string) => s1 + n + s2;
+ *
+ * // let's use `ap` to iterate `f` over an array for each input parameter
+ * assert.deepStrictEqual(pipe(["a", "b"], map(f), ap([1, 2]), ap(["😀", "😫", "😎"])), [
+ *   "a1😀", "a1😫", "a1😎",
+ *   "a2😀", "a2😫", "a2😎",
+ *   "b1😀", "b1😫", "b1😎",
+ *   "b2😀", "b2😫", "b2😎",
+ * ]);
+ *
+ * // given Array implements the Applicative interface with the `of` method,
+ * // we can write exactly the same thing in a more symmetric way
+ * // using `of` on `f` and `ap` on each array in input
+ * assert.deepStrictEqual(
+ *   pipe(of(f), ap(["a", "b"]), ap([1, 2]), ap(["😀", "😫", "😎"])),
+ *   pipe(["a", "b"], map(f), ap([1, 2]), ap(["😀", "😫", "😎"]))
+ * );
+ *
+ * @since 2.0.0
+ */
+var ap = function (fa) {
+    return (0, exports.flatMap)(function (f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); });
+};
+exports.ap = ap;
+/**
+ * Composes computations in sequence, using the return value of one computation to
+ * determine the next computation.
+ *
+ * In other words it takes a function `f` that produces an array from a single element of
+ * the base type `A` and returns a new function which applies `f` to each element of the
+ * input array (like [`map`](#map)) and, instead of returning an array of arrays, concatenates the
+ * results into a single array (like [`flatten`](#flatten)).
+ *
+ * @example
+ * import { flatMap, map, replicate } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const f = (n: number) => replicate(n, `${n}`);
+ * assert.deepStrictEqual(pipe([1, 2, 3], map(f)), [["1"], ["2", "2"], ["3", "3", "3"]]);
+ * assert.deepStrictEqual(pipe([1, 2, 3], flatMap(f)), ["1", "2", "2", "3", "3", "3"]);
+ *
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) {
+    return (0, function_1.pipe)(ma, (0, exports.chainWithIndex)(function (i, a) { return f(a, i); }));
+});
+/**
+ * Takes an array of arrays of `A` and flattens them into an array of `A`
+ * by concatenating the elements of each array in order.
+ *
+ * @example
+ * import { flatten } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(flatten([["a"], ["b", "c"], ["d", "e", "f"]]), ["a", "b", "c", "d", "e", "f"]);
+ *
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.flatten = (0, exports.flatMap)(function_1.identity);
+/**
+ * Same as [`map`](#map), but the iterating function takes both the index and the value
+ * of the element.
+ *
+ * @example
+ * import { mapWithIndex } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const f = (i: number, s: string) => `${s} - ${i}`;
+ * assert.deepStrictEqual(pipe(["a", "b", "c"], mapWithIndex(f)), ["a - 0", "b - 1", "c - 2"]);
+ *
+ * @category mapping
+ * @since 2.0.0
+ */
+var mapWithIndex = function (f) { return function (fa) {
+    return fa.map(function (a, i) { return f(i, a); });
+}; };
+exports.mapWithIndex = mapWithIndex;
+/**
+ * Maps an array with an iterating function that takes the index and the value of
+ * each element and returns an `Option`. It keeps only the `Some` values discarding
+ * the `None`s.
+ *
+ * Same as [`filterMap`](#filterMap), but with an iterating function which takes also
+ * the index as input.
+ *
+ * @example
+ * import { filterMapWithIndex } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ * import { option } from "fp-ts";
+ *
+ * const f = (i: number, s: string) => (i % 2 === 1 ? option.some(s.toUpperCase()) : option.none);
+ * assert.deepStrictEqual(pipe(["a", "no", "neither", "b"], filterMapWithIndex(f)), ["NO", "B"]);
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var filterMapWithIndex = function (f) {
+    return function (fa) {
+        var out = [];
+        for (var i = 0; i < fa.length; i++) {
+            var optionB = f(i, fa[i]);
+            if (_.isSome(optionB)) {
+                out.push(optionB.value);
+            }
+        }
+        return out;
+    };
+};
+exports.filterMapWithIndex = filterMapWithIndex;
+/**
+ * Maps an array with an iterating function that returns an `Option`
+ * and it keeps only the `Some` values discarding the `None`s.
+ *
+ * @example
+ * import { filterMap } from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ * import { option } from "fp-ts";
+ *
+ * const f = (s: string) => s.length === 1 ? option.some(s.toUpperCase()) : option.none;
+ * assert.deepStrictEqual(pipe(["a", "no", "neither", "b"], filterMap(f)), ["A", "B"]);
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var filterMap = function (f) {
+    return (0, exports.filterMapWithIndex)(function (_, a) { return f(a); });
+};
+exports.filterMap = filterMap;
+/**
+ * Compact an array of `Option`s discarding the `None` values and
+ * keeping the `Some` values. It returns a new array containing the values of
+ * the `Some` options.
+ *
+ * @example
+ * import { compact } from 'fp-ts/Array'
+ * import { option } from "fp-ts";
+ *
+ * assert.deepStrictEqual(compact([option.some("a"), option.none, option.some("b")]), ["a", "b"]);
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+exports.compact = (0, exports.filterMap)(function_1.identity);
+/**
+ * Separate an array of `Either`s into `Left`s and `Right`s, creating two new arrays:
+ * one containing all the left values and one containing all the right values.
+ *
+ * @example
+ * import { separate } from 'fp-ts/Array'
+ * import { either } from "fp-ts";
+ *
+ * assert.deepStrictEqual(separate([either.right("r1"), either.left("l1"), either.right("r2")]), {
+ *   left: ["l1"],
+ *   right: ["r1", "r2"],
+ * });
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var separate = function (fa) {
+    var left = [];
+    var right = [];
+    for (var _i = 0, fa_1 = fa; _i < fa_1.length; _i++) {
+        var e = fa_1[_i];
+        if (e._tag === 'Left') {
+            left.push(e.left);
+        }
+        else {
+            right.push(e.right);
+        }
+    }
+    return (0, Separated_1.separated)(left, right);
+};
+exports.separate = separate;
+/**
+ * Given an iterating function that is a `Predicate` or a `Refinement`,
+ * `filter` creates a new `Array` containing the elements of the original
+ * `Array` for which the iterating function is `true`.
+ *
+ * @example
+ * import { filter } from 'fp-ts/Array'
+ * import { isString } from "fp-ts/string";
+ *
+ * assert.deepStrictEqual(filter(isString)(["a", 1, {}, "b", 5]), ["a", "b"]);
+ * assert.deepStrictEqual(filter((x:number) => x > 0)([-3, 1, -2, 5]), [1, 5]);
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var filter = function (predicate) {
+    return function (as) {
+        return as.filter(predicate);
+    };
+};
+exports.filter = filter;
+/**
+ * Given an iterating function that is a `Predicate` or a `Refinement`,
+ * `partition` creates two new `Array`s: `right` containing the elements of the original
+ * `Array` for which the iterating function is `true`, `left` containing the elements
+ * for which it is false.
+ *
+ * @example
+ * import { partition } from 'fp-ts/Array'
+ * import { isString } from "fp-ts/string";
+ *
+ * assert.deepStrictEqual(partition(isString)(["a", 1, {}, "b", 5]), { left: [1, {}, 5], right: ["a", "b"] });
+ * assert.deepStrictEqual(partition((x: number) => x > 0)([-3, 1, -2, 5]), { left: [-3, -2], right: [1, 5] });
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var partition = function (predicate) {
+    return (0, exports.partitionWithIndex)(function (_, a) { return predicate(a); });
+};
+exports.partition = partition;
+/**
+ * Same as [`partition`](#partition), but passing also the index to the iterating function.
+ *
+ * @example
+ * import { partitionWithIndex } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(partitionWithIndex((index, x: number) => index < 3 && x > 0)([-2, 5, 6, 7]), {
+ *   left: [-2, 7],
+ *   right: [5, 6],
+ * });
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var partitionWithIndex = function (predicateWithIndex) {
+    return function (as) {
+        var left = [];
+        var right = [];
+        for (var i = 0; i < as.length; i++) {
+            var b = as[i];
+            if (predicateWithIndex(i, b)) {
+                right.push(b);
+            }
+            else {
+                left.push(b);
+            }
+        }
+        return (0, Separated_1.separated)(left, right);
+    };
+};
+exports.partitionWithIndex = partitionWithIndex;
+/**
+ * Given an iterating function that returns an `Either`,
+ * `partitionMap` applies the iterating function to each element and it creates two `Array`s:
+ * `right` containing the values of `Right` results, `left` containing the values of `Left` results.
+ *
+ * @example
+ * import { partitionMap } from 'fp-ts/Array'
+ * import { Either, left, right } from "fp-ts/Either";
+ *
+ * const upperIfString = <B>(x: B): Either<B, string> =>
+ *   typeof x === "string" ? right(x.toUpperCase()) : left(x);
+ * assert.deepStrictEqual(partitionMap(upperIfString)([-2, "hello", 6, 7, "world"]), {
+ *   left: [-2, 6, 7],
+ *   right: [ 'HELLO', 'WORLD' ],
+ * });
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var partitionMap = function (f) { return (0, exports.partitionMapWithIndex)(function (_, a) { return f(a); }); };
+exports.partitionMap = partitionMap;
+/**
+ * Same as [`partitionMap`](#partitionMap), but passing also the index to the iterating function.
+ *
+ * @example
+ * import { partitionMapWithIndex } from 'fp-ts/Array'
+ * import { Either, left, right } from "fp-ts/Either";
+ *
+ * const upperIfStringBefore3 = <B>(index: number, x: B): Either<B, string> =>
+ *   index < 3 && typeof x === "string" ? right(x.toUpperCase()) : left(x);
+ * assert.deepStrictEqual(partitionMapWithIndex(upperIfStringBefore3)([-2, "hello", 6, 7, "world"]), {
+ *   left: [-2, 6, 7, "world"],
+ *   right: ["HELLO"],
+ * });
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var partitionMapWithIndex = function (f) {
+    return function (fa) {
+        var left = [];
+        var right = [];
+        for (var i = 0; i < fa.length; i++) {
+            var e = f(i, fa[i]);
+            if (e._tag === 'Left') {
+                left.push(e.left);
+            }
+            else {
+                right.push(e.right);
+            }
+        }
+        return (0, Separated_1.separated)(left, right);
+    };
+};
+exports.partitionMapWithIndex = partitionMapWithIndex;
+/**
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @example
+ * import * as A from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     A.altW(() => ['a', 'b'])
+ *   ),
+ *   [1, 2, 3, 'a', 'b']
+ * )
+ *
+ * @category error handling
+ * @since 2.9.0
+ */
+var altW = function (that) {
+    return function (fa) {
+        return fa.concat(that());
+    };
+};
+exports.altW = altW;
+/**
+ * Identifies an associative operation on a type constructor. It is similar to `Semigroup`, except that it applies to
+ * types of kind `* -> *`.
+ *
+ * In case of `Array` concatenates the inputs into a single array.
+ *
+ * @example
+ * import * as A from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     A.alt(() => [4, 5])
+ *   ),
+ *   [1, 2, 3, 4, 5]
+ * )
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.alt = exports.altW;
+/**
+ * Same as [`filter`](#filter), but passing also the index to the iterating function.
+ *
+ * @example
+ * import { filterWithIndex } from 'fp-ts/Array';
+ *
+ * const f = (index: number, x: number) => x > 0 && index <= 2;
+ * assert.deepStrictEqual(filterWithIndex(f)([-3, 1, -2, 5]), [1]);
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var filterWithIndex = function (predicateWithIndex) {
+    return function (as) {
+        return as.filter(function (b, i) { return predicateWithIndex(i, b); });
+    };
+};
+exports.filterWithIndex = filterWithIndex;
+/**
+ * Given an iterating function that takes `Array<A>` as input, `extend` returns
+ * an array containing the results of the iterating function applied to the whole input
+ * `Array`, then to the input `Array` without the first element, then to the input
+ * `Array` without the first two elements, etc.
+ *
+ * @example
+ * import { extend } from 'fp-ts/Array'
+ *
+ * const f = (a: string[]) => a.join(",");
+ * assert.deepStrictEqual(extend(f)(["a", "b", "c"]), ["a,b,c", "b,c", "c"]);
+ *
+ * @since 2.0.0
+ */
+var extend = function (f) { return function (wa) {
+    return wa.map(function (_, i) { return f(wa.slice(i)); });
+}; };
+exports.extend = extend;
+/**
+ * `duplicate` returns an array containing the whole input `Array`,
+ * then to the input `Array` dropping the first element, then to the input
+ * `Array` dropping the first two elements, etc.
+ *
+ * @example
+ * import { duplicate } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(duplicate(["a", "b", "c"]), [["a", "b", "c"], ["b", "c"], ["c"]]);
+ *
+ * @since 2.0.0
+ */
+exports.duplicate = (0, exports.extend)(function_1.identity);
+/**
+ * Map and fold an `Array`.
+ * Map the `Array` passing each value to the iterating function.
+ * Then fold the results using the provided `Monoid`.
+ *
+ * @example
+ * import { foldMap } from 'fp-ts/Array'
+ *
+ * const monoid = { concat: (a: string, b: string) => a + b, empty: "" };
+ * const f = (s: string) => s.toUpperCase()
+ * assert.deepStrictEqual(foldMap(monoid)(f)(["a", "b", "c"]), "ABC");
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+exports.foldMap = RA.foldMap;
+/**
+ * Same as [`foldMap`](#foldMap) but passing also the index to the iterating function.
+ *
+ * @example
+ * import { foldMapWithIndex } from 'fp-ts/Array'
+ *
+ * const monoid = { concat: (a: string, b: string) => a + b, empty: "" };
+ * const f = (index:number, s: string) => `${s.toUpperCase()}(${index})`
+ * assert.deepStrictEqual(foldMapWithIndex(monoid)(f)(["a", "b", "c"]), "A(0)B(1)C(2)");
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+exports.foldMapWithIndex = RA.foldMapWithIndex;
+/**
+ * Reduces an `Array`.
+ *
+ * `reduce` executes the supplied iterating function on each element of the array,
+ * in order, passing in the element and the return value from the calculation on the preceding element.
+ *
+ * The first time that the iterating function is called there is no "return value of the
+ * previous calculation", the initial value is used in its place.
+ *
+ * @example
+ * import { reduce } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(reduce(5, (acc: number, cur: number) => acc * cur)([2, 3]), 5 * 2 * 3);
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduce = RA.reduce;
+/**
+ * Same as [`reduce`](#reduce) but passing also the index to the iterating function.
+ *
+ * @example
+ * import { reduceWithIndex } from 'fp-ts/Array'
+ *
+ * const f = (index: number, acc: string, cur: unknown) =>
+ *   acc + (typeof cur === "string" ? cur.toUpperCase() + index : "");
+ * assert.deepStrictEqual(reduceWithIndex("", f)([2, "a", "b", null]), "A1B2");
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduceWithIndex = RA.reduceWithIndex;
+/**
+ * Same as [`reduce`](#reduce) but applied from the end to the start.
+ *
+ * *Note*: the iterating function in this case takes the accumulator as the last argument.
+ *
+ * @example
+ * import { reduceRight } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(reduceRight("", (cur: string, acc: string) => acc + cur)(["a", "b", "c"]), "cba");
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduceRight = RA.reduceRight;
+/**
+ * Same as [`reduceRight`](#reduceRight) but passing also the index to the iterating function.
+ *
+ * @example
+ * import { reduceRightWithIndex } from 'fp-ts/Array'
+ *
+ * const f = (index: number, cur: unknown, acc: string) =>
+ *   acc + (typeof cur === "string" ? cur.toUpperCase() + index : "");
+ * assert.deepStrictEqual(reduceRightWithIndex("", f)([2, "a", "b", null]), "B2A1");
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduceRightWithIndex = RA.reduceRightWithIndex;
+/**
+ * Given an iterating function that returns a `HKT` (higher kinded type), `traverse`
+ * applies the iterating function to each element of the `Array` and then [`sequence`](#sequence)-s
+ * the results using the provided `Applicative`.
+ *
+ * E.g. suppose you have an `Array` and you want to format each element with a function
+ * that returns a result or an error as `f = (a: A) => Either<Error, B>`, using `traverse`
+ * you can apply `f` to all elements and directly obtain as a result an `Either<Error,Array<B>>`
+ * i.e. an `Array<B>` if all the results are `B`, or an `Error` if some of the results
+ * are `Error`s.
+ *
+ * @example
+ * import { traverse } from 'fp-ts/Array'
+ * import { Applicative, left, right } from "fp-ts/Either";
+ *
+ * const f = (x: unknown) =>
+ *   typeof x === "string" ? right(x.toUpperCase()) : left(new Error("not a string"));
+ * assert.deepStrictEqual(traverse(Applicative)(f)(["a", "b"]), right(["A", "B"]));
+ * assert.deepStrictEqual(traverse(Applicative)(f)(["a", 5]), left(new Error("not a string")));
+ *
+ * @category traversing
+ * @since 2.6.3
+ */
+var traverse = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (f) { return traverseWithIndexF(function (_, a) { return f(a); }); };
+};
+exports.traverse = traverse;
+/**
+ * `sequence` takes an `Array` where elements are `HKT<A>` (higher kinded type) and,
+ * using an applicative of that `HKT`, returns an `HKT` of `Array<A>`.
+ * E.g. it can turn an `Array<Either<Error, string>>` into an `Either<Error, Array<string>>`.
+ *
+ * `sequence` requires an `Applicative` of the `HKT` you are targeting, e.g. to turn an
+ * `Array<Either<E, A>>` into an `Either<E, Array<A>>`, it needs an
+ * `Applicative` for `Either`, to to turn an `Array<Option<A>>` into an `Option<Array<A>>`,
+ * it needs an `Applicative` for `Option`.
+ *
+ * @example
+ * import { sequence } from 'fp-ts/Array'
+ * import { Applicative, left, right } from "fp-ts/Either";
+ *
+ * assert.deepStrictEqual(sequence(Applicative)([right("a"), right("b")]), right(["a", "b"]));
+ * assert.deepStrictEqual(
+ *   sequence(Applicative)([right("a"), left(new Error("not a string"))]),
+ *   left(new Error("not a string"))
+ * );
+ *
+ * @category traversing
+ * @since 2.6.3
+ */
+var sequence = function (F) {
+    return function (ta) {
+        return _reduce(ta, F.of((0, exports.zero)()), function (fas, fa) {
+            return F.ap(F.map(fas, function (as) { return function (a) { return (0, function_1.pipe)(as, (0, exports.append)(a)); }; }), fa);
+        });
+    };
+};
+exports.sequence = sequence;
+/**
+ * Same as [`traverse`](#traverse) but passing also the index to the iterating function.
+ *
+ * @example
+ * import { traverseWithIndex } from 'fp-ts/Array'
+ * import { Applicative, left, right } from "fp-ts/Either";
+ *
+ * const f = (index:number, x:unknown) =>
+ *   typeof x === "string" ? right(x.toUpperCase() + index) : left(new Error("not a string"));
+ * assert.deepStrictEqual(traverseWithIndex(Applicative)(f)(["a", "b"]), right(["A0", "B1"]));
+ * assert.deepStrictEqual(traverseWithIndex(Applicative)(f)(["a", 5]), left(new Error("not a string")));
+ *
+ * @category sequencing
+ * @since 2.6.3
+ */
+var traverseWithIndex = function (F) {
+    return function (f) {
+        return (0, exports.reduceWithIndex)(F.of((0, exports.zero)()), function (i, fbs, a) {
+            return F.ap(F.map(fbs, function (bs) { return function (b) { return (0, function_1.pipe)(bs, (0, exports.append)(b)); }; }), f(i, a));
+        });
+    };
+};
+exports.traverseWithIndex = traverseWithIndex;
+/**
+ * @category filtering
+ * @since 2.6.5
+ */
+var wither = function (F) {
+    var _witherF = _wither(F);
+    return function (f) { return function (fa) { return _witherF(fa, f); }; };
+};
+exports.wither = wither;
+/**
+ * @category filtering
+ * @since 2.6.5
+ */
+var wilt = function (F) {
+    var _wiltF = _wilt(F);
+    return function (f) { return function (fa) { return _wiltF(fa, f); }; };
+};
+exports.wilt = wilt;
+/**
+ * `unfold` takes a function `f` which returns an `Option` of a tuple containing an outcome
+ * value and an input for the following iteration.
+ * `unfold` applies `f` to the initial value `b` and then recursively to the second
+ * element of the tuple contained in the returned `option` of the previous
+ * calculation until `f` returns `Option.none`.
+ *
+ * @example
+ * import { unfold } from 'fp-ts/Array'
+ * import { option } from 'fp-ts'
+ *
+ * const f = (n: number) => {
+ *   if (n <= 0) return option.none;
+ *   const returnValue = n * 2;
+ *   const inputForNextRound = n - 1;
+ *   return option.some([returnValue, inputForNextRound] as const);
+ * };
+ * assert.deepStrictEqual(unfold(5, f), [10, 8, 6, 4, 2]);
+ *
+ * @since 2.6.6
+ */
+var unfold = function (b, f) {
+    var out = [];
+    var bb = b;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        var mt = f(bb);
+        if (_.isSome(mt)) {
+            var _a = mt.value, a = _a[0], b_1 = _a[1];
+            out.push(a);
+            bb = b_1;
+        }
+        else {
+            break;
+        }
+    }
+    return out;
+};
+exports.unfold = unfold;
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'Array';
+/**
+ * `getShow` makes a `Show` for an `Array<A>` from a `Show` for
+ * an `A`.
+ *
+ * @example
+ * import { getShow } from 'fp-ts/Array'
+ *
+ * const numShow = { show: (n: number) => (n >= 0 ? `${n}` : `(${-n})`) };
+ * assert.deepStrictEqual(getShow(numShow).show([-2, -1, 0, 1]), "[(2), (1), 0, 1]");
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+exports.getShow = RA.getShow;
+/**
+ * Get a `Semigroup` based on the concatenation of `Array`s.
+ * See also [`getMonoid`](#getMonoid).
+ *
+ * @example
+ * import { getSemigroup } from 'fp-ts/Array'
+ *
+ * const S = getSemigroup<number>();
+ * assert.deepStrictEqual(S.concat([1, 2], [2, 3]), [1, 2, 2, 3]);
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+var getSemigroup = function () { return ({
+    concat: function (first, second) { return first.concat(second); }
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * Returns a `Monoid` for `Array<A>` based on the concatenation of `Array`s.
+ *
+ * @example
+ * import { getMonoid } from 'fp-ts/Array'
+ *
+ * const M = getMonoid<number>()
+ * assert.deepStrictEqual(M.concat([1, 2], [3, 4]), [1, 2, 3, 4])
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getMonoid = function () { return ({
+    concat: (0, exports.getSemigroup)().concat,
+    empty: []
+}); };
+exports.getMonoid = getMonoid;
+/**
+ * Derives an `Eq` over the `Array` of a given element type from the `Eq` of that type. The derived `Eq` defines two
+ * arrays as equal if all elements of both arrays are compared equal pairwise with the given `E`. In case of arrays of
+ * different lengths, the result is non equality.
+ *
+ * @example
+ * import * as S from 'fp-ts/string'
+ * import { getEq } from 'fp-ts/Array'
+ *
+ * const E = getEq(S.Eq)
+ * assert.strictEqual(E.equals(['a', 'b'], ['a', 'b']), true)
+ * assert.strictEqual(E.equals(['a'], []), false)
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+exports.getEq = RA.getEq;
+/**
+ * Derives an `Ord` over the `Array` of a given element type from the `Ord` of that type. The ordering between two such
+ * arrays is equal to: the first non equal comparison of each arrays elements taken pairwise in increasing order, in
+ * case of equality over all the pairwise elements; the longest array is considered the greatest, if both arrays have
+ * the same length, the result is equality.
+ *
+ * @example
+ * import { getOrd } from 'fp-ts/Array'
+ * import * as S from 'fp-ts/string'
+ *
+ * const O = getOrd(S.Ord)
+ * assert.strictEqual(O.compare(['b'], ['a']), 1)
+ * assert.strictEqual(O.compare(['a'], ['a']), 0)
+ * assert.strictEqual(O.compare(['a'], ['b']), -1)
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+exports.getOrd = RA.getOrd;
+/**
+ * Get a `Semigroup` based on the union of the elements of `Array`s.
+ * Elements which equal according to the provided `Eq` are included
+ * only once in the result.
+ * See also [`getUnionMonoid`](#getUnionMonoid).
+ *
+ * @example
+ * import { getUnionSemigroup } from 'fp-ts/Array';
+ * import { Eq } from 'fp-ts/number';
+ *
+ * const S = getUnionSemigroup<number>(Eq);
+ * assert.deepStrictEqual(S.concat([1, 2], [2, 3]), [1, 2, 3]);
+ *
+ * @category instances
+ * @since 2.11.0
+ */
+var getUnionSemigroup = function (E) {
+    var unionE = union(E);
+    return {
+        concat: function (first, second) { return unionE(second)(first); }
+    };
+};
+exports.getUnionSemigroup = getUnionSemigroup;
+/**
+ * Get a `Monoid` based on the union of the elements of `Array`s.
+ * Elements which equal according to the provided `Eq` are included
+ * only once in the result.
+ *
+ * @example
+ * import { getUnionMonoid } from 'fp-ts/Array'
+ * import { Eq } from 'fp-ts/number';
+ *
+ * const M = getUnionMonoid<number>(Eq);
+ * assert.deepStrictEqual(M.concat([1, 2], [2, 3]), [1, 2, 3]);
+ * assert.deepStrictEqual(M.empty,[]);
+ *
+ * @category instances
+ * @since 2.11.0
+ */
+var getUnionMonoid = function (E) { return ({
+    concat: (0, exports.getUnionSemigroup)(E).concat,
+    empty: []
+}); };
+exports.getUnionMonoid = getUnionMonoid;
+/**
+ * Get a `Semigroup` based on the intersection of the elements of `Array`s.
+ * Only elements present in the two arrays which are equal according to the
+ * provided `Eq` are included in the result.
+ *
+ * @example
+ * import { getIntersectionSemigroup } from 'fp-ts/Array'
+ * import { Eq } from 'fp-ts/number';
+ *
+ * const S = getIntersectionSemigroup<number>(Eq);
+ * assert.deepStrictEqual(S.concat([1, 2], [2, 3]), [2]);
+ *
+ * @category instances
+ * @since 2.11.0
+ */
+var getIntersectionSemigroup = function (E) {
+    var intersectionE = intersection(E);
+    return {
+        concat: function (first, second) { return intersectionE(second)(first); }
+    };
+};
+exports.getIntersectionSemigroup = getIntersectionSemigroup;
+/**
+ * Get a `Magma` for `Array` where the `concat` function is the differnce between
+ * the first and the second array, i.e. the result contains all the elements of the
+ * first array for which their is no equal element in the second array according
+ * to the `Eq` provided.
+ *
+ *
+ * @example
+ * import { getDifferenceMagma } from 'fp-ts/Array'
+ * import { Eq } from 'fp-ts/number';
+ *
+ * const S = getDifferenceMagma<number>(Eq);
+ * assert.deepStrictEqual(S.concat([1, 2], [2, 3]), [1]);
+ *
+ * @category instances
+ * @since 2.11.0
+ */
+var getDifferenceMagma = function (E) {
+    var differenceE = difference(E);
+    return {
+        concat: function (first, second) { return differenceE(second)(first); }
+    };
+};
+exports.getDifferenceMagma = getDifferenceMagma;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * Given an input an `Array` of functions, `flap` returns an `Array` containing
+ * the results of applying each function to the given input.
+ *
+ * @example
+ * import { flap } from 'fp-ts/Array'
+ *
+ * const funs = [
+ *   (n: number) => `Double: ${n * 2}`,
+ *   (n: number) => `Triple: ${n * 3}`,
+ *   (n: number) => `Square: ${n * n}`,
+ * ];
+ * assert.deepStrictEqual(flap(4)(funs), ['Double: 8', 'Triple: 12', 'Square: 16']);
+ *
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FunctorWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Apply = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap
+};
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.5.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.Apply);
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.5.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.Apply);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Applicative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap
+};
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import * as A from 'fp-ts/Array'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     A.chainFirst(() => ['a', 'b'])
+ *   ),
+ *   [1, 1, 2, 2, 3, 3]
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     A.chainFirst(() => [])
+ *   ),
+ *   []
+ * )
+ *
+ * @category sequencing
+ * @since 2.0.0
+ */
+exports.chainFirst = 
+/*#__PURE__*/ (0, Chain_1.chainFirst)(exports.Chain);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Unfoldable = {
+    URI: exports.URI,
+    unfold: exports.unfold
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.Zero = {
+    URI: exports.URI,
+    zero: exports.zero
+};
+/**
+ * @category do notation
+ * @since 2.11.0
+ */
+exports.guard = (0, Zero_1.guard)(exports.Zero, exports.Pointed);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alternative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    alt: _alt,
+    zero: exports.zero
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Extend = {
+    URI: exports.URI,
+    map: _map,
+    extend: _extend
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Compactable = {
+    URI: exports.URI,
+    compact: exports.compact,
+    separate: exports.separate
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Filterable = {
+    URI: exports.URI,
+    map: _map,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FilterableWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    partitionMapWithIndex: _partitionMapWithIndex,
+    partitionWithIndex: _partitionWithIndex,
+    filterMapWithIndex: _filterMapWithIndex,
+    filterWithIndex: _filterWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Foldable = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FoldableWithIndex = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Traversable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.TraversableWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    traverseWithIndex: _traverseWithIndex
+};
+var _wither = /*#__PURE__*/ (0, Witherable_1.witherDefault)(exports.Traversable, exports.Compactable);
+var _wilt = /*#__PURE__*/ (0, Witherable_1.wiltDefault)(exports.Traversable, exports.Compactable);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Witherable = {
+    URI: exports.URI,
+    map: _map,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    wither: _wither,
+    wilt: _wilt
+};
+/**
+ * @category sequencing
+ * @since 2.11.0
+ */
+exports.chainRecDepthFirst = RA.chainRecDepthFirst;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.ChainRecDepthFirst = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap,
+    chainRec: _chainRecDepthFirst
+};
+/**
+ * @category sequencing
+ * @since 2.11.0
+ */
+exports.chainRecBreadthFirst = RA.chainRecBreadthFirst;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.ChainRecBreadthFirst = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap,
+    chainRec: _chainRecBreadthFirst
+};
+/**
+ * Filter values inside a context.
+ *
+ * @since 2.11.0
+ */
+exports.filterE = (0, Witherable_1.filterE)(exports.Witherable);
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.FromEither = {
+    URI: exports.URI,
+    fromEither: exports.fromEither
+};
+/**
+ * @category lifting
+ * @since 2.11.0
+ */
+exports.fromEitherK = (0, FromEither_1.fromEitherK)(exports.FromEither);
+// -------------------------------------------------------------------------------------
+// unsafe
+// -------------------------------------------------------------------------------------
+/**
+ * @category unsafe
+ * @since 2.0.0
+ */
+exports.unsafeInsertAt = NEA.unsafeInsertAt;
+/**
+ * @category unsafe
+ * @since 2.0.0
+ */
+var unsafeUpdateAt = function (i, a, as) {
+    return (0, exports.isNonEmpty)(as) ? NEA.unsafeUpdateAt(i, a, as) : [];
+};
+exports.unsafeUpdateAt = unsafeUpdateAt;
+/**
+ * @category unsafe
+ * @since 2.0.0
+ */
+var unsafeDeleteAt = function (i, as) {
+    var xs = as.slice();
+    xs.splice(i, 1);
+    return xs;
+};
+exports.unsafeDeleteAt = unsafeDeleteAt;
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * `every` tells if the provided predicate holds true for every element in the `Array`.
+ *
+ * @example
+ * import { every } from 'fp-ts/Array'
+ *
+ * assert.equal(every((x: number) => x >= 0)([1, 2, 3]), true);
+ * assert.equal(every((x: number) => x >= 0)([-1, 2, 3]), false);
+ *
+ * @since 2.9.0
+ */
+exports.every = RA.every;
+/**
+ * `some` tells if the provided predicate holds true at least for one element in the `Array`.
+ *
+ * @example
+ * import { some } from 'fp-ts/Array'
+ *
+ * assert.equal(some((x: number) => x >= 0)([1, 2, 3]), true);
+ * assert.equal(some((x: number) => x >= 10)([1, 2, 3]), false);
+ *
+ * @since 2.9.0
+ */
+var some = function (predicate) {
+    return function (as) {
+        return as.some(predicate);
+    };
+};
+exports.some = some;
+/**
+ * Alias of [`some`](#some)
+ *
+ * @since 2.11.0
+ */
+exports.exists = exports.some;
+/**
+ * Places an element in between members of an `Array`, then folds the results using the provided `Monoid`.
+ *
+ * @example
+ * import * as S from 'fp-ts/string'
+ * import { intercalate } from 'fp-ts/Array'
+ *
+ * assert.deepStrictEqual(intercalate(S.Monoid)('-')(['a', 'b', 'c']), 'a-b-c')
+ *
+ * @since 2.12.0
+ */
+exports.intercalate = RA.intercalate;
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = (0, Chain_1.bind)(exports.Chain);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.Apply);
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chain = exports.flatMap;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * Use `NonEmptyArray` module instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.range = NEA.range;
+/**
+ * Use a new `[]` instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.empty = [];
+/**
+ * Use `prepend` instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.cons = NEA.cons;
+/**
+ * Use `append` instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.snoc = NEA.snoc;
+/**
+ * Use `prependAll` instead
+ *
+ * @category zone of death
+ * @since 2.9.0
+ * @deprecated
+ */
+exports.prependToAll = exports.prependAll;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `A.Functor` instead of `A.array`
+ * (where `A` is from `import A from 'fp-ts/Array'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.array = {
+    URI: exports.URI,
+    compact: exports.compact,
+    separate: exports.separate,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    mapWithIndex: _mapWithIndex,
+    partitionMapWithIndex: _partitionMapWithIndex,
+    partitionWithIndex: _partitionWithIndex,
+    filterMapWithIndex: _filterMapWithIndex,
+    filterWithIndex: _filterWithIndex,
+    alt: _alt,
+    zero: exports.zero,
+    unfold: exports.unfold,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverseWithIndex: _traverseWithIndex,
+    extend: _extend,
+    wither: _wither,
+    wilt: _wilt
+};
+
+
+/***/ }),
+
+/***/ 2372:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.bind = exports.tap = exports.chainFirst = void 0;
+function chainFirst(M) {
+    var tapM = tap(M);
+    return function (f) { return function (first) { return tapM(first, f); }; };
+}
+exports.chainFirst = chainFirst;
+/** @internal */
+function tap(M) {
+    return function (first, f) { return M.chain(first, function (a) { return M.map(f(a), function () { return a; }); }); };
+}
+exports.tap = tap;
+function bind(M) {
+    return function (name, f) { return function (ma) { return M.chain(ma, function (a) { return M.map(f(a), function (b) {
+        var _a;
+        return Object.assign({}, a, (_a = {}, _a[name] = b, _a));
+    }); }); }; };
+}
+exports.bind = bind;
+
+
+/***/ }),
+
+/***/ 5322:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.tailRec = void 0;
+/**
+ * @since 2.0.0
+ */
+var tailRec = function (startWith, f) {
+    var ab = f(startWith);
+    while (ab._tag === 'Left') {
+        ab = f(ab.left);
+    }
+    return ab.right;
+};
+exports.tailRec = tailRec;
+
+
+/***/ }),
+
+/***/ 729:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getCompactableComposition = exports.separate = exports.compact = void 0;
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var Option_1 = __nccwpck_require__(2569);
+var S = __importStar(__nccwpck_require__(5877));
+function compact(F, G) {
+    return function (fga) { return F.map(fga, G.compact); };
+}
+exports.compact = compact;
+function separate(F, C, G) {
+    var _compact = compact(F, C);
+    var _map = (0, Functor_1.map)(F, G);
+    return function (fge) { return S.separated(_compact((0, function_1.pipe)(fge, _map(Option_1.getLeft))), _compact((0, function_1.pipe)(fge, _map(Option_1.getRight)))); };
+}
+exports.separate = separate;
+/** @deprecated */
+function getCompactableComposition(F, G) {
+    var map = (0, Functor_1.getFunctorComposition)(F, G).map;
+    return {
+        map: map,
+        compact: compact(F, G),
+        separate: separate(F, G, G)
+    };
+}
+exports.getCompactableComposition = getCompactableComposition;
+
+
+/***/ }),
+
+/***/ 7534:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.match = exports.foldW = exports.matchW = exports.isRight = exports.isLeft = exports.fromOption = exports.fromPredicate = exports.FromEither = exports.MonadThrow = exports.throwError = exports.ChainRec = exports.Extend = exports.extend = exports.Alt = exports.alt = exports.altW = exports.Bifunctor = exports.mapLeft = exports.bimap = exports.Traversable = exports.sequence = exports.traverse = exports.Foldable = exports.reduceRight = exports.foldMap = exports.reduce = exports.Monad = exports.Chain = exports.Applicative = exports.Apply = exports.ap = exports.apW = exports.Pointed = exports.of = exports.asUnit = exports.as = exports.Functor = exports.map = exports.getAltValidation = exports.getApplicativeValidation = exports.getWitherable = exports.getFilterable = exports.getCompactable = exports.getSemigroup = exports.getEq = exports.getShow = exports.URI = exports.flatMap = exports.right = exports.left = void 0;
+exports.chainFirstW = exports.chainFirst = exports.chain = exports.chainW = exports.sequenceArray = exports.traverseArray = exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndex = exports.traverseReadonlyNonEmptyArrayWithIndex = exports.ApT = exports.apSW = exports.apS = exports.bindW = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.exists = exports.elem = exports.toError = exports.toUnion = exports.chainNullableK = exports.fromNullableK = exports.tryCatchK = exports.tryCatch = exports.fromNullable = exports.orElse = exports.orElseW = exports.swap = exports.filterOrElseW = exports.filterOrElse = exports.flatMapOption = exports.flatMapNullable = exports.liftOption = exports.liftNullable = exports.chainOptionKW = exports.chainOptionK = exports.fromOptionK = exports.duplicate = exports.flatten = exports.flattenW = exports.tap = exports.apSecondW = exports.apSecond = exports.apFirstW = exports.apFirst = exports.flap = exports.getOrElse = exports.getOrElseW = exports.fold = void 0;
+exports.getValidation = exports.getValidationMonoid = exports.getValidationSemigroup = exports.getApplyMonoid = exports.getApplySemigroup = exports.either = exports.stringifyJSON = exports.parseJSON = void 0;
+var Applicative_1 = __nccwpck_require__(4766);
+var Apply_1 = __nccwpck_require__(205);
+var chainable = __importStar(__nccwpck_require__(2372));
+var ChainRec_1 = __nccwpck_require__(5322);
+var FromEither_1 = __nccwpck_require__(1964);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var Separated_1 = __nccwpck_require__(5877);
+var Witherable_1 = __nccwpck_require__(4384);
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * Constructs a new `Either` holding a `Left` value. This usually represents a failure, due to the right-bias of this
+ * structure.
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.left = _.left;
+/**
+ * Constructs a new `Either` holding a `Right` value. This usually represents a successful value due to the right bias
+ * of this structure.
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.right = _.right;
+/**
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) { return ((0, exports.isLeft)(ma) ? ma : f(ma.right)); });
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+var _ap = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+/* istanbul ignore next */
+var _reduce = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduce)(b, f)); };
+/* istanbul ignore next */
+var _foldMap = function (M) { return function (fa, f) {
+    var foldMapM = (0, exports.foldMap)(M);
+    return (0, function_1.pipe)(fa, foldMapM(f));
+}; };
+/* istanbul ignore next */
+var _reduceRight = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduceRight)(b, f)); };
+var _traverse = function (F) {
+    var traverseF = (0, exports.traverse)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseF(f)); };
+};
+var _bimap = function (fa, f, g) { return (0, function_1.pipe)(fa, (0, exports.bimap)(f, g)); };
+var _mapLeft = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.mapLeft)(f)); };
+/* istanbul ignore next */
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+/* istanbul ignore next */
+var _extend = function (wa, f) { return (0, function_1.pipe)(wa, (0, exports.extend)(f)); };
+var _chainRec = function (a, f) {
+    return (0, ChainRec_1.tailRec)(f(a), function (e) {
+        return (0, exports.isLeft)(e) ? (0, exports.right)((0, exports.left)(e.left)) : (0, exports.isLeft)(e.right) ? (0, exports.left)(f(e.right.left)) : (0, exports.right)((0, exports.right)(e.right.right));
+    });
+};
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'Either';
+/**
+ * @category instances
+ * @since 2.0.0
+ */
+var getShow = function (SE, SA) { return ({
+    show: function (ma) { return ((0, exports.isLeft)(ma) ? "left(".concat(SE.show(ma.left), ")") : "right(".concat(SA.show(ma.right), ")")); }
+}); };
+exports.getShow = getShow;
+/**
+ * @category instances
+ * @since 2.0.0
+ */
+var getEq = function (EL, EA) { return ({
+    equals: function (x, y) {
+        return x === y || ((0, exports.isLeft)(x) ? (0, exports.isLeft)(y) && EL.equals(x.left, y.left) : (0, exports.isRight)(y) && EA.equals(x.right, y.right));
+    }
+}); };
+exports.getEq = getEq;
+/**
+ * Semigroup returning the left-most non-`Left` value. If both operands are `Right`s then the inner values are
+ * concatenated using the provided `Semigroup`
+ *
+ * @example
+ * import { getSemigroup, left, right } from 'fp-ts/Either'
+ * import { SemigroupSum } from 'fp-ts/number'
+ *
+ * const S = getSemigroup<string, number>(SemigroupSum)
+ * assert.deepStrictEqual(S.concat(left('a'), left('b')), left('a'))
+ * assert.deepStrictEqual(S.concat(left('a'), right(2)), right(2))
+ * assert.deepStrictEqual(S.concat(right(1), left('b')), right(1))
+ * assert.deepStrictEqual(S.concat(right(1), right(2)), right(3))
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getSemigroup = function (S) { return ({
+    concat: function (x, y) { return ((0, exports.isLeft)(y) ? x : (0, exports.isLeft)(x) ? y : (0, exports.right)(S.concat(x.right, y.right))); }
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * Builds a `Compactable` instance for `Either` given `Monoid` for the left side.
+ *
+ * @category filtering
+ * @since 2.10.0
+ */
+var getCompactable = function (M) {
+    var empty = (0, exports.left)(M.empty);
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        compact: function (ma) { return ((0, exports.isLeft)(ma) ? ma : ma.right._tag === 'None' ? empty : (0, exports.right)(ma.right.value)); },
+        separate: function (ma) {
+            return (0, exports.isLeft)(ma)
+                ? (0, Separated_1.separated)(ma, ma)
+                : (0, exports.isLeft)(ma.right)
+                    ? (0, Separated_1.separated)((0, exports.right)(ma.right.left), empty)
+                    : (0, Separated_1.separated)(empty, (0, exports.right)(ma.right.right));
+        }
+    };
+};
+exports.getCompactable = getCompactable;
+/**
+ * Builds a `Filterable` instance for `Either` given `Monoid` for the left side
+ *
+ * @category filtering
+ * @since 2.10.0
+ */
+var getFilterable = function (M) {
+    var empty = (0, exports.left)(M.empty);
+    var _a = (0, exports.getCompactable)(M), compact = _a.compact, separate = _a.separate;
+    var filter = function (ma, predicate) {
+        return (0, exports.isLeft)(ma) ? ma : predicate(ma.right) ? ma : empty;
+    };
+    var partition = function (ma, p) {
+        return (0, exports.isLeft)(ma)
+            ? (0, Separated_1.separated)(ma, ma)
+            : p(ma.right)
+                ? (0, Separated_1.separated)(empty, (0, exports.right)(ma.right))
+                : (0, Separated_1.separated)((0, exports.right)(ma.right), empty);
+    };
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        compact: compact,
+        separate: separate,
+        filter: filter,
+        filterMap: function (ma, f) {
+            if ((0, exports.isLeft)(ma)) {
+                return ma;
+            }
+            var ob = f(ma.right);
+            return ob._tag === 'None' ? empty : (0, exports.right)(ob.value);
+        },
+        partition: partition,
+        partitionMap: function (ma, f) {
+            if ((0, exports.isLeft)(ma)) {
+                return (0, Separated_1.separated)(ma, ma);
+            }
+            var e = f(ma.right);
+            return (0, exports.isLeft)(e) ? (0, Separated_1.separated)((0, exports.right)(e.left), empty) : (0, Separated_1.separated)(empty, (0, exports.right)(e.right));
+        }
+    };
+};
+exports.getFilterable = getFilterable;
+/**
+ * Builds `Witherable` instance for `Either` given `Monoid` for the left side
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+var getWitherable = function (M) {
+    var F_ = (0, exports.getFilterable)(M);
+    var C = (0, exports.getCompactable)(M);
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        compact: F_.compact,
+        separate: F_.separate,
+        filter: F_.filter,
+        filterMap: F_.filterMap,
+        partition: F_.partition,
+        partitionMap: F_.partitionMap,
+        traverse: _traverse,
+        sequence: exports.sequence,
+        reduce: _reduce,
+        foldMap: _foldMap,
+        reduceRight: _reduceRight,
+        wither: (0, Witherable_1.witherDefault)(exports.Traversable, C),
+        wilt: (0, Witherable_1.wiltDefault)(exports.Traversable, C)
+    };
+};
+exports.getWitherable = getWitherable;
+/**
+ * The default [`Applicative`](#applicative) instance returns the first error, if you want to
+ * get all errors you need to provide a way to concatenate them via a `Semigroup`.
+ *
+ * @example
+ * import * as A from 'fp-ts/Apply'
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as S from 'fp-ts/Semigroup'
+ * import * as string from 'fp-ts/string'
+ *
+ * const parseString = (u: unknown): E.Either<string, string> =>
+ *   typeof u === 'string' ? E.right(u) : E.left('not a string')
+ *
+ * const parseNumber = (u: unknown): E.Either<string, number> =>
+ *   typeof u === 'number' ? E.right(u) : E.left('not a number')
+ *
+ * interface Person {
+ *   readonly name: string
+ *   readonly age: number
+ * }
+ *
+ * const parsePerson = (
+ *   input: Record<string, unknown>
+ * ): E.Either<string, Person> =>
+ *   pipe(
+ *     E.Do,
+ *     E.apS('name', parseString(input.name)),
+ *     E.apS('age', parseNumber(input.age))
+ *   )
+ *
+ * assert.deepStrictEqual(parsePerson({}), E.left('not a string')) // <= first error
+ *
+ * const Applicative = E.getApplicativeValidation(
+ *   pipe(string.Semigroup, S.intercalate(', '))
+ * )
+ *
+ * const apS = A.apS(Applicative)
+ *
+ * const parsePersonAll = (
+ *   input: Record<string, unknown>
+ * ): E.Either<string, Person> =>
+ *   pipe(
+ *     E.Do,
+ *     apS('name', parseString(input.name)),
+ *     apS('age', parseNumber(input.age))
+ *   )
+ *
+ * assert.deepStrictEqual(parsePersonAll({}), E.left('not a string, not a number')) // <= all errors
+ *
+ * @category error handling
+ * @since 2.7.0
+ */
+var getApplicativeValidation = function (SE) { return ({
+    URI: exports.URI,
+    _E: undefined,
+    map: _map,
+    ap: function (fab, fa) {
+        return (0, exports.isLeft)(fab)
+            ? (0, exports.isLeft)(fa)
+                ? (0, exports.left)(SE.concat(fab.left, fa.left))
+                : fab
+            : (0, exports.isLeft)(fa)
+                ? fa
+                : (0, exports.right)(fab.right(fa.right));
+    },
+    of: exports.of
+}); };
+exports.getApplicativeValidation = getApplicativeValidation;
+/**
+ * The default [`Alt`](#alt) instance returns the last error, if you want to
+ * get all errors you need to provide a way to concatenate them via a `Semigroup`.
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as S from 'fp-ts/Semigroup'
+ * import * as string from 'fp-ts/string'
+ *
+ * const parseString = (u: unknown): E.Either<string, string> =>
+ *   typeof u === 'string' ? E.right(u) : E.left('not a string')
+ *
+ * const parseNumber = (u: unknown): E.Either<string, number> =>
+ *   typeof u === 'number' ? E.right(u) : E.left('not a number')
+ *
+ * const parse = (u: unknown): E.Either<string, string | number> =>
+ *   pipe(
+ *     parseString(u),
+ *     E.alt<string, string | number>(() => parseNumber(u))
+ *   )
+ *
+ * assert.deepStrictEqual(parse(true), E.left('not a number')) // <= last error
+ *
+ * const Alt = E.getAltValidation(pipe(string.Semigroup, S.intercalate(', ')))
+ *
+ * const parseAll = (u: unknown): E.Either<string, string | number> =>
+ *   Alt.alt<string | number>(parseString(u), () => parseNumber(u))
+ *
+ * assert.deepStrictEqual(parseAll(true), E.left('not a string, not a number')) // <= all errors
+ *
+ * @category error handling
+ * @since 2.7.0
+ */
+var getAltValidation = function (SE) { return ({
+    URI: exports.URI,
+    _E: undefined,
+    map: _map,
+    alt: function (me, that) {
+        if ((0, exports.isRight)(me)) {
+            return me;
+        }
+        var ea = that();
+        return (0, exports.isLeft)(ea) ? (0, exports.left)(SE.concat(me.left, ea.left)) : ea;
+    }
+}); };
+exports.getAltValidation = getAltValidation;
+/**
+ * @category mapping
+ * @since 2.0.0
+ */
+var map = function (f) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? fa : (0, exports.right)(f(fa.right));
+}; };
+exports.map = map;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * Maps the `Right` value of this `Either` to the specified constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.as = (0, function_1.dual)(2, (0, Functor_1.as)(exports.Functor));
+/**
+ * Maps the `Right` value of this `Either` to the void constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.asUnit = (0, Functor_1.asUnit)(exports.Functor);
+/**
+ * @category constructors
+ * @since 2.7.0
+ */
+exports.of = exports.right;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * Less strict version of [`ap`](#ap).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.8.0
+ */
+var apW = function (fa) { return function (fab) {
+    return (0, exports.isLeft)(fab) ? fab : (0, exports.isLeft)(fa) ? fa : (0, exports.right)(fab.right(fa.right));
+}; };
+exports.apW = apW;
+/**
+ * @since 2.0.0
+ */
+exports.ap = exports.apW;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Apply = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Applicative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap
+};
+/**
+ * Left-associative fold of a structure.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as E from 'fp-ts/Either'
+ *
+ * const startWith = 'prefix'
+ * const concat = (a: string, b: string) => `${a}:${b}`
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right('a'), E.reduce(startWith, concat)),
+ *   'prefix:a'
+ * )
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.left('e'), E.reduce(startWith, concat)),
+ *   'prefix'
+ * )
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+var reduce = function (b, f) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? b : f(b, fa.right);
+}; };
+exports.reduce = reduce;
+/**
+ * Map each element of the structure to a monoid, and combine the results.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as E from 'fp-ts/Either'
+ * import * as S from 'fp-ts/string'
+ *
+ * const yell = (a: string) => `${a}!`
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right('a'), E.foldMap(S.Monoid)(yell)),
+ *   'a!'
+ * )
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.left('e'), E.foldMap(S.Monoid)(yell)),
+ *   S.Monoid.empty
+ * )
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+var foldMap = function (M) { return function (f) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? M.empty : f(fa.right);
+}; }; };
+exports.foldMap = foldMap;
+/**
+ * Right-associative fold of a structure.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as E from 'fp-ts/Either'
+ *
+ * const startWith = 'postfix'
+ * const concat = (a: string, b: string) => `${a}:${b}`
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right('a'), E.reduceRight(startWith, concat)),
+ *   'a:postfix'
+ * )
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.left('e'), E.reduceRight(startWith, concat)),
+ *   'postfix'
+ * )
+ *
+ * @category folding
+ * @since 2.0.0
+ */
+var reduceRight = function (b, f) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? b : f(fa.right, b);
+}; };
+exports.reduceRight = reduceRight;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Foldable = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight
+};
+/**
+ * Map each element of a structure to an action, evaluate these actions from left to right, and collect the results.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import * as E from 'fp-ts/Either'
+ * import * as O from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right(['a']), E.traverse(O.Applicative)(RA.head)),
+ *   O.some(E.right('a'))
+ *  )
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right([]), E.traverse(O.Applicative)(RA.head)),
+ *   O.none
+ * )
+ *
+ * @category traversing
+ * @since 2.6.3
+ */
+var traverse = function (F) {
+    return function (f) {
+        return function (ta) {
+            return (0, exports.isLeft)(ta) ? F.of((0, exports.left)(ta.left)) : F.map(f(ta.right), exports.right);
+        };
+    };
+};
+exports.traverse = traverse;
+/**
+ * Evaluate each monadic action in the structure from left to right, and collect the results.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as E from 'fp-ts/Either'
+ * import * as O from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right(O.some('a')), E.sequence(O.Applicative)),
+ *   O.some(E.right('a'))
+ *  )
+ *
+ * assert.deepStrictEqual(
+ *   pipe(E.right(O.none), E.sequence(O.Applicative)),
+ *   O.none
+ * )
+ *
+ * @category traversing
+ * @since 2.6.3
+ */
+var sequence = function (F) {
+    return function (ma) {
+        return (0, exports.isLeft)(ma) ? F.of((0, exports.left)(ma.left)) : F.map(ma.right, exports.right);
+    };
+};
+exports.sequence = sequence;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Traversable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence
+};
+/**
+ * Map a pair of functions over the two type arguments of the bifunctor.
+ *
+ * @category mapping
+ * @since 2.0.0
+ */
+var bimap = function (f, g) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? (0, exports.left)(f(fa.left)) : (0, exports.right)(g(fa.right));
+}; };
+exports.bimap = bimap;
+/**
+ * Map a function over the first type argument of a bifunctor.
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+var mapLeft = function (f) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? (0, exports.left)(f(fa.left)) : fa;
+}; };
+exports.mapLeft = mapLeft;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Bifunctor = {
+    URI: exports.URI,
+    bimap: _bimap,
+    mapLeft: _mapLeft
+};
+/**
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the error and the return types will be merged.
+ *
+ * @category error handling
+ * @since 2.9.0
+ */
+var altW = function (that) { return function (fa) {
+    return (0, exports.isLeft)(fa) ? that() : fa;
+}; };
+exports.altW = altW;
+/**
+ * Identifies an associative operation on a type constructor. It is similar to `Semigroup`, except that it applies to
+ * types of kind `* -> *`.
+ *
+ * In case of `Either` returns the left-most non-`Left` value (or the right-most `Left` value if both values are `Left`).
+ *
+ * | x        | y        | pipe(x, alt(() => y) |
+ * | -------- | -------- | -------------------- |
+ * | left(a)  | left(b)  | left(b)              |
+ * | left(a)  | right(2) | right(2)             |
+ * | right(1) | left(b)  | right(1)             |
+ * | right(1) | right(2) | right(1)             |
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.left('a'),
+ *     E.alt(() => E.left('b'))
+ *   ),
+ *   E.left('b')
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.left('a'),
+ *     E.alt(() => E.right(2))
+ *   ),
+ *   E.right(2)
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.right(1),
+ *     E.alt(() => E.left('b'))
+ *   ),
+ *   E.right(1)
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.right(1),
+ *     E.alt(() => E.right(2))
+ *   ),
+ *   E.right(1)
+ * )
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.alt = exports.altW;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @since 2.0.0
+ */
+var extend = function (f) { return function (wa) {
+    return (0, exports.isLeft)(wa) ? wa : (0, exports.right)(f(wa));
+}; };
+exports.extend = extend;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Extend = {
+    URI: exports.URI,
+    map: _map,
+    extend: _extend
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.ChainRec = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap,
+    chainRec: _chainRec
+};
+/**
+ * @since 2.6.3
+ */
+exports.throwError = exports.left;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.MonadThrow = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap,
+    throwError: exports.throwError
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.FromEither = {
+    URI: exports.URI,
+    fromEither: function_1.identity
+};
+/**
+ * @example
+ * import { fromPredicate, left, right } from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     1,
+ *     fromPredicate(
+ *       (n) => n > 0,
+ *       () => 'error'
+ *     )
+ *   ),
+ *   right(1)
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     -1,
+ *     fromPredicate(
+ *       (n) => n > 0,
+ *       () => 'error'
+ *     )
+ *   ),
+ *   left('error')
+ * )
+ *
+ * @category lifting
+ * @since 2.0.0
+ */
+exports.fromPredicate = (0, FromEither_1.fromPredicate)(exports.FromEither);
+// -------------------------------------------------------------------------------------
+// conversions
+// -------------------------------------------------------------------------------------
+/**
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as O from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     O.some(1),
+ *     E.fromOption(() => 'error')
+ *   ),
+ *   E.right(1)
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     O.none,
+ *     E.fromOption(() => 'error')
+ *   ),
+ *   E.left('error')
+ * )
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.fromOption = 
+/*#__PURE__*/ (0, FromEither_1.fromOption)(exports.FromEither);
+// -------------------------------------------------------------------------------------
+// refinements
+// -------------------------------------------------------------------------------------
+/**
+ * Returns `true` if the either is an instance of `Left`, `false` otherwise.
+ *
+ * @category refinements
+ * @since 2.0.0
+ */
+exports.isLeft = _.isLeft;
+/**
+ * Returns `true` if the either is an instance of `Right`, `false` otherwise.
+ *
+ * @category refinements
+ * @since 2.0.0
+ */
+exports.isRight = _.isRight;
+/**
+ * Less strict version of [`match`](#match).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return types will be merged.
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+var matchW = function (onLeft, onRight) {
+    return function (ma) {
+        return (0, exports.isLeft)(ma) ? onLeft(ma.left) : onRight(ma.right);
+    };
+};
+exports.matchW = matchW;
+/**
+ * Alias of [`matchW`](#matchw).
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.foldW = exports.matchW;
+/**
+ * Takes two functions and an `Either` value, if the value is a `Left` the inner value is applied to the first function,
+ * if the value is a `Right` the inner value is applied to the second function.
+ *
+ * @example
+ * import { match, left, right } from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * function onLeft(errors: Array<string>): string {
+ *   return `Errors: ${errors.join(', ')}`
+ * }
+ *
+ * function onRight(value: number): string {
+ *   return `Ok: ${value}`
+ * }
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     right(1),
+ *     match(onLeft, onRight)
+ *   ),
+ *   'Ok: 1'
+ * )
+ * assert.strictEqual(
+ *   pipe(
+ *     left(['error 1', 'error 2']),
+ *     match(onLeft, onRight)
+ *   ),
+ *   'Errors: error 1, error 2'
+ * )
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.match = exports.matchW;
+/**
+ * Alias of [`match`](#match).
+ *
+ * @category pattern matching
+ * @since 2.0.0
+ */
+exports.fold = exports.match;
+/**
+ * Less strict version of [`getOrElse`](#getorelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return type will be merged.
+ *
+ * @category error handling
+ * @since 2.6.0
+ */
+var getOrElseW = function (onLeft) {
+    return function (ma) {
+        return (0, exports.isLeft)(ma) ? onLeft(ma.left) : ma.right;
+    };
+};
+exports.getOrElseW = getOrElseW;
+/**
+ * Returns the wrapped value if it's a `Right` or a default value if is a `Left`.
+ *
+ * @example
+ * import { getOrElse, left, right } from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     right(1),
+ *     getOrElse(() => 0)
+ *   ),
+ *   1
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     left('error'),
+ *     getOrElse(() => 0)
+ *   ),
+ *   0
+ * )
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.getOrElse = exports.getOrElseW;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.0.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.Apply);
+/**
+ * Less strict version of [`apFirst`](#apfirst)
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.12.0
+ */
+exports.apFirstW = exports.apFirst;
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.0.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.Apply);
+/**
+ * Less strict version of [`apSecond`](#apsecond)
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.12.0
+ */
+exports.apSecondW = exports.apSecond;
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @category combinators
+ * @since 2.15.0
+ */
+exports.tap = (0, function_1.dual)(2, chainable.tap(exports.Chain));
+/**
+ * Less strict version of [`flatten`](#flatten).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category sequencing
+ * @since 2.11.0
+ */
+exports.flattenW = 
+/*#__PURE__*/ (0, exports.flatMap)(function_1.identity);
+/**
+ * The `flatten` function is the conventional monad join operator. It is used to remove one level of monadic structure, projecting its bound argument into the outer level.
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(E.flatten(E.right(E.right('a'))), E.right('a'))
+ * assert.deepStrictEqual(E.flatten(E.right(E.left('e'))), E.left('e'))
+ * assert.deepStrictEqual(E.flatten(E.left('e')), E.left('e'))
+ *
+ * @category sequencing
+ * @since 2.0.0
+ */
+exports.flatten = exports.flattenW;
+/**
+ * @since 2.0.0
+ */
+exports.duplicate = (0, exports.extend)(function_1.identity);
+/**
+ * Use `liftOption`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.fromOptionK = 
+/*#__PURE__*/ (0, FromEither_1.fromOptionK)(exports.FromEither);
+/**
+ * Use `flatMapOption`.
+ *
+ * @category legacy
+ * @since 2.11.0
+ */
+exports.chainOptionK = (0, FromEither_1.chainOptionK)(exports.FromEither, exports.Chain);
+/**
+ * Use `flatMapOption`.
+ *
+ * @category legacy
+ * @since 2.13.2
+ */
+exports.chainOptionKW = exports.chainOptionK;
+/** @internal */
+var _FromEither = {
+    fromEither: exports.FromEither.fromEither
+};
+/**
+ * @category lifting
+ * @since 2.15.0
+ */
+exports.liftNullable = _.liftNullable(_FromEither);
+/**
+ * @category lifting
+ * @since 2.15.0
+ */
+exports.liftOption = _.liftOption(_FromEither);
+/** @internal */
+var _FlatMap = {
+    flatMap: exports.flatMap
+};
+/**
+ * @category sequencing
+ * @since 2.15.0
+ */
+exports.flatMapNullable = _.flatMapNullable(_FromEither, _FlatMap);
+/**
+ * @category sequencing
+ * @since 2.15.0
+ */
+exports.flatMapOption = _.flatMapOption(_FromEither, _FlatMap);
+/**
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.right(1),
+ *     E.filterOrElse(
+ *       (n) => n > 0,
+ *       () => 'error'
+ *     )
+ *   ),
+ *   E.right(1)
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.right(-1),
+ *     E.filterOrElse(
+ *       (n) => n > 0,
+ *       () => 'error'
+ *     )
+ *   ),
+ *   E.left('error')
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     E.left('a'),
+ *     E.filterOrElse(
+ *       (n) => n > 0,
+ *       () => 'error'
+ *     )
+ *   ),
+ *   E.left('a')
+ * )
+ *
+ * @category filtering
+ * @since 2.0.0
+ */
+exports.filterOrElse = (0, FromEither_1.filterOrElse)(exports.FromEither, exports.Chain);
+/**
+ * Less strict version of [`filterOrElse`](#filterorelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category filtering
+ * @since 2.9.0
+ */
+exports.filterOrElseW = exports.filterOrElse;
+/**
+ * Returns a `Right` if is a `Left` (and vice versa).
+ *
+ * @since 2.0.0
+ */
+var swap = function (ma) { return ((0, exports.isLeft)(ma) ? (0, exports.right)(ma.left) : (0, exports.left)(ma.right)); };
+exports.swap = swap;
+/**
+ * Less strict version of [`orElse`](#orelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @category error handling
+ * @since 2.10.0
+ */
+var orElseW = function (onLeft) {
+    return function (ma) {
+        return (0, exports.isLeft)(ma) ? onLeft(ma.left) : ma;
+    };
+};
+exports.orElseW = orElseW;
+/**
+ * Useful for recovering from errors.
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.orElse = exports.orElseW;
+/**
+ * Takes a default and a nullable value, if the value is not nully, turn it into a `Right`, if the value is nully use
+ * the provided default as a `Left`.
+ *
+ * @example
+ * import { fromNullable, left, right } from 'fp-ts/Either'
+ *
+ * const parse = fromNullable('nully')
+ *
+ * assert.deepStrictEqual(parse(1), right(1))
+ * assert.deepStrictEqual(parse(null), left('nully'))
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+var fromNullable = function (e) {
+    return function (a) {
+        return a == null ? (0, exports.left)(e) : (0, exports.right)(a);
+    };
+};
+exports.fromNullable = fromNullable;
+/**
+ * Constructs a new `Either` from a function that might throw.
+ *
+ * See also [`tryCatchK`](#trycatchk).
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ *
+ * const unsafeHead = <A>(as: ReadonlyArray<A>): A => {
+ *   if (as.length > 0) {
+ *     return as[0]
+ *   } else {
+ *     throw new Error('empty array')
+ *   }
+ * }
+ *
+ * const head = <A>(as: ReadonlyArray<A>): E.Either<Error, A> =>
+ *   E.tryCatch(() => unsafeHead(as), e => (e instanceof Error ? e : new Error('unknown error')))
+ *
+ * assert.deepStrictEqual(head([]), E.left(new Error('empty array')))
+ * assert.deepStrictEqual(head([1, 2, 3]), E.right(1))
+ *
+ * @category interop
+ * @since 2.0.0
+ */
+var tryCatch = function (f, onThrow) {
+    try {
+        return (0, exports.right)(f());
+    }
+    catch (e) {
+        return (0, exports.left)(onThrow(e));
+    }
+};
+exports.tryCatch = tryCatch;
+/**
+ * Converts a function that may throw to one returning a `Either`.
+ *
+ * @category interop
+ * @since 2.10.0
+ */
+var tryCatchK = function (f, onThrow) {
+    return function () {
+        var a = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            a[_i] = arguments[_i];
+        }
+        return (0, exports.tryCatch)(function () { return f.apply(void 0, a); }, onThrow);
+    };
+};
+exports.tryCatchK = tryCatchK;
+/**
+ * Use `liftNullable`.
+ *
+ * @category legacy
+ * @since 2.9.0
+ */
+var fromNullableK = function (e) {
+    var from = (0, exports.fromNullable)(e);
+    return function (f) { return (0, function_1.flow)(f, from); };
+};
+exports.fromNullableK = fromNullableK;
+/**
+ * Use `flatMapNullable`.
+ *
+ * @category legacy
+ * @since 2.9.0
+ */
+var chainNullableK = function (e) {
+    var from = (0, exports.fromNullableK)(e);
+    return function (f) { return (0, exports.flatMap)(from(f)); };
+};
+exports.chainNullableK = chainNullableK;
+/**
+ * @category conversions
+ * @since 2.10.0
+ */
+exports.toUnion = (0, exports.foldW)(function_1.identity, function_1.identity);
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * Default value for the `onError` argument of `tryCatch`
+ *
+ * @since 2.0.0
+ */
+function toError(e) {
+    try {
+        return e instanceof Error ? e : new Error(String(e));
+    }
+    catch (error) {
+        return new Error();
+    }
+}
+exports.toError = toError;
+function elem(E) {
+    return function (a, ma) {
+        if (ma === undefined) {
+            var elemE_1 = elem(E);
+            return function (ma) { return elemE_1(a, ma); };
+        }
+        return (0, exports.isLeft)(ma) ? false : E.equals(a, ma.right);
+    };
+}
+exports.elem = elem;
+/**
+ * Returns `false` if `Left` or returns the result of the application of the given predicate to the `Right` value.
+ *
+ * @example
+ * import { exists, left, right } from 'fp-ts/Either'
+ *
+ * const gt2 = exists((n: number) => n > 2)
+ *
+ * assert.strictEqual(gt2(left('a')), false)
+ * assert.strictEqual(gt2(right(1)), false)
+ * assert.strictEqual(gt2(right(3)), true)
+ *
+ * @since 2.0.0
+ */
+var exists = function (predicate) {
+    return function (ma) {
+        return (0, exports.isLeft)(ma) ? false : predicate(ma.right);
+    };
+};
+exports.exists = exists;
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = chainable.bind(exports.Chain);
+/**
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindW = exports.bind;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.Apply);
+/**
+ * Less strict version of [`apS`](#aps).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apSW = exports.apS;
+/**
+ * @since 2.11.0
+ */
+exports.ApT = (0, exports.of)(_.emptyReadonlyArray);
+// -------------------------------------------------------------------------------------
+// array utils
+// -------------------------------------------------------------------------------------
+/**
+ * Equivalent to `ReadonlyNonEmptyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyNonEmptyArrayWithIndex = function (f) {
+    return function (as) {
+        var e = f(0, _.head(as));
+        if ((0, exports.isLeft)(e)) {
+            return e;
+        }
+        var out = [e.right];
+        for (var i = 1; i < as.length; i++) {
+            var e_1 = f(i, as[i]);
+            if ((0, exports.isLeft)(e_1)) {
+                return e_1;
+            }
+            out.push(e_1.right);
+        }
+        return (0, exports.right)(out);
+    };
+};
+exports.traverseReadonlyNonEmptyArrayWithIndex = traverseReadonlyNonEmptyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyArrayWithIndex = function (f) {
+    var g = (0, exports.traverseReadonlyNonEmptyArrayWithIndex)(f);
+    return function (as) { return (_.isNonEmpty(as) ? g(as) : exports.ApT); };
+};
+exports.traverseReadonlyArrayWithIndex = traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverse(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+var traverseArray = function (f) { return (0, exports.traverseReadonlyArrayWithIndex)(function (_, a) { return f(a); }); };
+exports.traverseArray = traverseArray;
+/**
+ * Equivalent to `ReadonlyArray#sequence(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.sequenceArray = 
+/*#__PURE__*/ (0, exports.traverseArray)(function_1.identity);
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.6.0
+ */
+exports.chainW = exports.flatMap;
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chain = exports.flatMap;
+/**
+ * Alias of `tap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chainFirst = exports.tap;
+/**
+ * Alias of `tap`.
+ *
+ * @category legacy
+ * @since 2.8.0
+ */
+exports.chainFirstW = exports.tap;
+/**
+ * Use [`parse`](./Json.ts.html#parse) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+function parseJSON(s, onError) {
+    return (0, exports.tryCatch)(function () { return JSON.parse(s); }, onError);
+}
+exports.parseJSON = parseJSON;
+/**
+ * Use [`stringify`](./Json.ts.html#stringify) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var stringifyJSON = function (u, onError) {
+    return (0, exports.tryCatch)(function () {
+        var s = JSON.stringify(u);
+        if (typeof s !== 'string') {
+            throw new Error('Converting unsupported structure to JSON');
+        }
+        return s;
+    }, onError);
+};
+exports.stringifyJSON = stringifyJSON;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `E.Functor` instead of `E.either`
+ * (where `E` is from `import E from 'fp-ts/Either'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.either = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _ap,
+    chain: exports.flatMap,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    bimap: _bimap,
+    mapLeft: _mapLeft,
+    alt: _alt,
+    extend: _extend,
+    chainRec: _chainRec,
+    throwError: exports.throwError
+};
+/**
+ * Use [`getApplySemigroup`](./Apply.ts.html#getapplysemigroup) instead.
+ *
+ * Semigroup returning the left-most `Left` value. If both operands are `Right`s then the inner values
+ * are concatenated using the provided `Semigroup`
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getApplySemigroup = 
+/*#__PURE__*/ (0, Apply_1.getApplySemigroup)(exports.Apply);
+/**
+ * Use [`getApplicativeMonoid`](./Applicative.ts.html#getapplicativemonoid) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getApplyMonoid = 
+/*#__PURE__*/ (0, Applicative_1.getApplicativeMonoid)(exports.Applicative);
+/**
+ * Use [`getApplySemigroup`](./Apply.ts.html#getapplysemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var getValidationSemigroup = function (SE, SA) {
+    return (0, Apply_1.getApplySemigroup)((0, exports.getApplicativeValidation)(SE))(SA);
+};
+exports.getValidationSemigroup = getValidationSemigroup;
+/**
+ * Use [`getApplicativeMonoid`](./Applicative.ts.html#getapplicativemonoid) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var getValidationMonoid = function (SE, MA) {
+    return (0, Applicative_1.getApplicativeMonoid)((0, exports.getApplicativeValidation)(SE))(MA);
+};
+exports.getValidationMonoid = getValidationMonoid;
+/**
+ * Use [`getApplicativeValidation`](#getapplicativevalidation) and [`getAltValidation`](#getaltvalidation) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+function getValidation(SE) {
+    var ap = (0, exports.getApplicativeValidation)(SE).ap;
+    var alt = (0, exports.getAltValidation)(SE).alt;
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        of: exports.of,
+        chain: exports.flatMap,
+        bimap: _bimap,
+        mapLeft: _mapLeft,
+        reduce: _reduce,
+        foldMap: _foldMap,
+        reduceRight: _reduceRight,
+        extend: _extend,
+        traverse: _traverse,
+        sequence: exports.sequence,
+        chainRec: _chainRec,
+        throwError: exports.throwError,
+        ap: ap,
+        alt: alt
+    };
+}
+exports.getValidation = getValidation;
+
+
+/***/ }),
+
+/***/ 9803:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getEitherM = exports.toUnion = exports.swap = exports.orLeft = exports.tapError = exports.orElseFirst = exports.orElse = exports.getOrElse = exports.matchE = exports.match = exports.altValidation = exports.mapError = exports.mapLeft = exports.mapBoth = exports.bimap = exports.alt = exports.flatMap = exports.chain = exports.ap = exports.map = exports.chainNullableK = exports.fromNullableK = exports.fromNullable = exports.leftF = exports.rightF = exports.left = exports.right = void 0;
+var Apply_1 = __nccwpck_require__(205);
+var E = __importStar(__nccwpck_require__(7534));
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+function right(F) {
+    return (0, function_1.flow)(E.right, F.of);
+}
+exports.right = right;
+function left(F) {
+    return (0, function_1.flow)(E.left, F.of);
+}
+exports.left = left;
+function rightF(F) {
+    return function (fa) { return F.map(fa, E.right); };
+}
+exports.rightF = rightF;
+function leftF(F) {
+    return function (fe) { return F.map(fe, E.left); };
+}
+exports.leftF = leftF;
+function fromNullable(F) {
+    return function (e) { return (0, function_1.flow)(E.fromNullable(e), F.of); };
+}
+exports.fromNullable = fromNullable;
+function fromNullableK(F) {
+    var fromNullableF = fromNullable(F);
+    return function (e) {
+        var fromNullableFE = fromNullableF(e);
+        return function (f) { return (0, function_1.flow)(f, fromNullableFE); };
+    };
+}
+exports.fromNullableK = fromNullableK;
+function chainNullableK(M) {
+    var chainM = chain(M);
+    var fromNullableKM = fromNullableK(M);
+    return function (e) {
+        var fromNullableKMe = fromNullableKM(e);
+        return function (f) { return chainM(fromNullableKMe(f)); };
+    };
+}
+exports.chainNullableK = chainNullableK;
+function map(F) {
+    return (0, Functor_1.map)(F, E.Functor);
+}
+exports.map = map;
+function ap(F) {
+    return (0, Apply_1.ap)(F, E.Apply);
+}
+exports.ap = ap;
+function chain(M) {
+    var flatMapM = flatMap(M);
+    return function (f) { return function (ma) { return flatMapM(ma, f); }; };
+}
+exports.chain = chain;
+/** @internal */
+function flatMap(M) {
+    return function (ma, f) { return M.chain(ma, function (e) { return (E.isLeft(e) ? M.of(e) : f(e.right)); }); };
+}
+exports.flatMap = flatMap;
+function alt(M) {
+    return function (second) { return function (first) { return M.chain(first, function (e) { return (E.isLeft(e) ? second() : M.of(e)); }); }; };
+}
+exports.alt = alt;
+function bimap(F) {
+    var mapBothF = mapBoth(F);
+    return function (f, g) { return function (self) { return mapBothF(self, f, g); }; };
+}
+exports.bimap = bimap;
+/** @internal */
+function mapBoth(F) {
+    return function (self, f, g) { return F.map(self, E.bimap(f, g)); };
+}
+exports.mapBoth = mapBoth;
+function mapLeft(F) {
+    var mapErrorF = mapError(F);
+    return function (f) { return function (self) { return mapErrorF(self, f); }; };
+}
+exports.mapLeft = mapLeft;
+/** @internal */
+function mapError(F) {
+    return function (self, f) { return F.map(self, E.mapLeft(f)); };
+}
+exports.mapError = mapError;
+function altValidation(M, S) {
+    return function (second) { return function (first) {
+        return M.chain(first, E.match(function (e1) {
+            return M.map(second(), E.mapLeft(function (e2) { return S.concat(e1, e2); }));
+        }, right(M)));
+    }; };
+}
+exports.altValidation = altValidation;
+function match(F) {
+    return function (onLeft, onRight) { return function (ma) { return F.map(ma, E.match(onLeft, onRight)); }; };
+}
+exports.match = match;
+function matchE(M) {
+    return function (onLeft, onRight) { return function (ma) { return M.chain(ma, E.match(onLeft, onRight)); }; };
+}
+exports.matchE = matchE;
+function getOrElse(M) {
+    return function (onLeft) { return function (ma) { return M.chain(ma, E.match(onLeft, M.of)); }; };
+}
+exports.getOrElse = getOrElse;
+function orElse(M) {
+    return function (onLeft) { return function (ma) { return M.chain(ma, function (e) { return (E.isLeft(e) ? onLeft(e.left) : M.of(e)); }); }; };
+}
+exports.orElse = orElse;
+function orElseFirst(M) {
+    var tapErrorM = tapError(M);
+    return function (onLeft) { return function (ma) { return tapErrorM(ma, onLeft); }; };
+}
+exports.orElseFirst = orElseFirst;
+/** @internal */
+function tapError(M) {
+    var orElseM = orElse(M);
+    return function (ma, onLeft) {
+        return (0, function_1.pipe)(ma, orElseM(function (e) { return M.map(onLeft(e), function (eb) { return (E.isLeft(eb) ? eb : E.left(e)); }); }));
+    };
+}
+exports.tapError = tapError;
+function orLeft(M) {
+    return function (onLeft) { return function (ma) {
+        return M.chain(ma, E.match(function (e) { return M.map(onLeft(e), E.left); }, function (a) { return M.of(E.right(a)); }));
+    }; };
+}
+exports.orLeft = orLeft;
+function swap(F) {
+    return function (ma) { return F.map(ma, E.swap); };
+}
+exports.swap = swap;
+function toUnion(F) {
+    return function (fa) { return F.map(fa, E.toUnion); };
+}
+exports.toUnion = toUnion;
+/** @deprecated  */
+/* istanbul ignore next */
+function getEitherM(M) {
+    var _ap = ap(M);
+    var _map = map(M);
+    var _chain = chain(M);
+    var _alt = alt(M);
+    var _bimap = bimap(M);
+    var _mapLeft = mapLeft(M);
+    var _fold = matchE(M);
+    var _getOrElse = getOrElse(M);
+    var _orElse = orElse(M);
+    return {
+        map: function (fa, f) { return (0, function_1.pipe)(fa, _map(f)); },
+        ap: function (fab, fa) { return (0, function_1.pipe)(fab, _ap(fa)); },
+        of: right(M),
+        chain: function (ma, f) { return (0, function_1.pipe)(ma, _chain(f)); },
+        alt: function (fa, that) { return (0, function_1.pipe)(fa, _alt(that)); },
+        bimap: function (fea, f, g) { return (0, function_1.pipe)(fea, _bimap(f, g)); },
+        mapLeft: function (fea, f) { return (0, function_1.pipe)(fea, _mapLeft(f)); },
+        fold: function (fa, onLeft, onRight) { return (0, function_1.pipe)(fa, _fold(onLeft, onRight)); },
+        getOrElse: function (fa, onLeft) { return (0, function_1.pipe)(fa, _getOrElse(onLeft)); },
+        orElse: function (fa, f) { return (0, function_1.pipe)(fa, _orElse(f)); },
+        swap: swap(M),
+        rightM: rightF(M),
+        leftM: leftF(M),
+        left: left(M)
+    };
+}
+exports.getEitherM = getEitherM;
+
+
+/***/ }),
+
+/***/ 6964:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.eqDate = exports.eqNumber = exports.eqString = exports.eqBoolean = exports.eq = exports.strictEqual = exports.getStructEq = exports.getTupleEq = exports.Contravariant = exports.getMonoid = exports.getSemigroup = exports.eqStrict = exports.URI = exports.contramap = exports.tuple = exports.struct = exports.fromEquals = void 0;
+var function_1 = __nccwpck_require__(6985);
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+var fromEquals = function (equals) { return ({
+    equals: function (x, y) { return x === y || equals(x, y); }
+}); };
+exports.fromEquals = fromEquals;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.10.0
+ */
+var struct = function (eqs) {
+    return (0, exports.fromEquals)(function (first, second) {
+        for (var key in eqs) {
+            if (!eqs[key].equals(first[key], second[key])) {
+                return false;
+            }
+        }
+        return true;
+    });
+};
+exports.struct = struct;
+/**
+ * Given a tuple of `Eq`s returns a `Eq` for the tuple
+ *
+ * @example
+ * import { tuple } from 'fp-ts/Eq'
+ * import * as S from 'fp-ts/string'
+ * import * as N from 'fp-ts/number'
+ * import * as B from 'fp-ts/boolean'
+ *
+ * const E = tuple(S.Eq, N.Eq, B.Eq)
+ * assert.strictEqual(E.equals(['a', 1, true], ['a', 1, true]), true)
+ * assert.strictEqual(E.equals(['a', 1, true], ['b', 1, true]), false)
+ * assert.strictEqual(E.equals(['a', 1, true], ['a', 2, true]), false)
+ * assert.strictEqual(E.equals(['a', 1, true], ['a', 1, false]), false)
+ *
+ * @since 2.10.0
+ */
+var tuple = function () {
+    var eqs = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        eqs[_i] = arguments[_i];
+    }
+    return (0, exports.fromEquals)(function (first, second) { return eqs.every(function (E, i) { return E.equals(first[i], second[i]); }); });
+};
+exports.tuple = tuple;
+/* istanbul ignore next */
+var contramap_ = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.contramap)(f)); };
+/**
+ * A typical use case for `contramap` would be like, given some `User` type, to construct an `Eq<User>`.
+ *
+ * We can do so with a function from `User -> X` where `X` is some value that we know how to compare
+ * for equality (meaning we have an `Eq<X>`)
+ *
+ * For example, given the following `User` type, we want to construct an `Eq<User>` that just looks at the `key` field
+ * for each user (since it's known to be unique).
+ *
+ * If we have a way of comparing `UUID`s for equality (`eqUUID: Eq<UUID>`) and we know how to go from `User -> UUID`,
+ * using `contramap` we can do this
+ *
+ * @example
+ * import { contramap, Eq } from 'fp-ts/Eq'
+ * import { pipe } from 'fp-ts/function'
+ * import * as S from 'fp-ts/string'
+ *
+ * type UUID = string
+ *
+ * interface User {
+ *   readonly key: UUID
+ *   readonly firstName: string
+ *   readonly lastName: string
+ * }
+ *
+ * const eqUUID: Eq<UUID> = S.Eq
+ *
+ * const eqUserByKey: Eq<User> = pipe(
+ *   eqUUID,
+ *   contramap((user) => user.key)
+ * )
+ *
+ * assert.deepStrictEqual(
+ *   eqUserByKey.equals(
+ *     { key: 'k1', firstName: 'a1', lastName: 'b1' },
+ *     { key: 'k2', firstName: 'a1', lastName: 'b1' }
+ *   ),
+ *   false
+ * )
+ * assert.deepStrictEqual(
+ *   eqUserByKey.equals(
+ *     { key: 'k1', firstName: 'a1', lastName: 'b1' },
+ *     { key: 'k1', firstName: 'a2', lastName: 'b1' }
+ *   ),
+ *   true
+ * )
+ *
+ * @since 2.0.0
+ */
+var contramap = function (f) { return function (fa) {
+    return (0, exports.fromEquals)(function (x, y) { return fa.equals(f(x), f(y)); });
+}; };
+exports.contramap = contramap;
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'Eq';
+/**
+ * @category instances
+ * @since 2.5.0
+ */
+exports.eqStrict = {
+    equals: function (a, b) { return a === b; }
+};
+var empty = {
+    equals: function () { return true; }
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+var getSemigroup = function () { return ({
+    concat: function (x, y) { return (0, exports.fromEquals)(function (a, b) { return x.equals(a, b) && y.equals(a, b); }); }
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * @category instances
+ * @since 2.6.0
+ */
+var getMonoid = function () { return ({
+    concat: (0, exports.getSemigroup)().concat,
+    empty: empty
+}); };
+exports.getMonoid = getMonoid;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Contravariant = {
+    URI: exports.URI,
+    contramap: contramap_
+};
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * Use [`tuple`](#tuple) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getTupleEq = exports.tuple;
+/**
+ * Use [`struct`](#struct) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getStructEq = exports.struct;
+/**
+ * Use [`eqStrict`](#eqstrict) instead
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.strictEqual = exports.eqStrict.equals;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Contravariant` instance, pass `E.Contravariant` instead of `E.eq`
+ * (where `E` is from `import E from 'fp-ts/Eq'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.eq = exports.Contravariant;
+/**
+ * Use [`Eq`](./boolean.ts.html#eq) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.eqBoolean = exports.eqStrict;
+/**
+ * Use [`Eq`](./string.ts.html#eq) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.eqString = exports.eqStrict;
+/**
+ * Use [`Eq`](./number.ts.html#eq) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.eqNumber = exports.eqStrict;
+/**
+ * Use [`Eq`](./Date.ts.html#eq) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.eqDate = {
+    equals: function (first, second) { return first.valueOf() === second.valueOf(); }
+};
+
+
+/***/ }),
+
+/***/ 6907:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.getFilterableComposition = exports.partitionMap = exports.partition = exports.filterMap = exports.filter = void 0;
+/**
+ * `Filterable` represents data structures which can be _partitioned_/_filtered_.
+ *
+ * Adapted from https://github.com/LiamGoodacre/purescript-filterable/blob/master/src/Data/Filterable.purs
+ *
+ * @since 2.0.0
+ */
+var Compactable_1 = __nccwpck_require__(729);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var Option_1 = __nccwpck_require__(2569);
+var Predicate_1 = __nccwpck_require__(6382);
+var Separated_1 = __nccwpck_require__(5877);
+function filter(F, G) {
+    return function (predicate) { return function (fga) { return F.map(fga, function (ga) { return G.filter(ga, predicate); }); }; };
+}
+exports.filter = filter;
+function filterMap(F, G) {
+    return function (f) { return function (fga) { return F.map(fga, function (ga) { return G.filterMap(ga, f); }); }; };
+}
+exports.filterMap = filterMap;
+function partition(F, G) {
+    var _filter = filter(F, G);
+    return function (predicate) {
+        var left = _filter((0, Predicate_1.not)(predicate));
+        var right = _filter(predicate);
+        return function (fgb) { return (0, Separated_1.separated)(left(fgb), right(fgb)); };
+    };
+}
+exports.partition = partition;
+function partitionMap(F, G) {
+    var _filterMap = filterMap(F, G);
+    return function (f) { return function (fga) {
+        return (0, Separated_1.separated)((0, function_1.pipe)(fga, _filterMap(function (a) { return (0, Option_1.getLeft)(f(a)); })), (0, function_1.pipe)(fga, _filterMap(function (a) { return (0, Option_1.getRight)(f(a)); })));
+    }; };
+}
+exports.partitionMap = partitionMap;
+/** @deprecated */
+function getFilterableComposition(F, G) {
+    var map = (0, Functor_1.getFunctorComposition)(F, G).map;
+    var _compact = (0, Compactable_1.compact)(F, G);
+    var _separate = (0, Compactable_1.separate)(F, G, G);
+    var _filter = filter(F, G);
+    var _filterMap = filterMap(F, G);
+    var _partition = partition(F, G);
+    var _partitionMap = partitionMap(F, G);
+    return {
+        map: map,
+        compact: _compact,
+        separate: _separate,
+        filter: function (fga, f) { return (0, function_1.pipe)(fga, _filter(f)); },
+        filterMap: function (fga, f) { return (0, function_1.pipe)(fga, _filterMap(f)); },
+        partition: function (fga, p) { return (0, function_1.pipe)(fga, _partition(p)); },
+        partitionMap: function (fga, f) { return (0, function_1.pipe)(fga, _partitionMap(f)); }
+    };
+}
+exports.getFilterableComposition = getFilterableComposition;
+
+
+/***/ }),
+
+/***/ 1964:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+/**
+ * The `FromEither` type class represents those data types which support errors.
+ *
+ * @since 2.10.0
+ */
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.tapEither = exports.filterOrElse = exports.chainFirstEitherK = exports.chainEitherK = exports.fromEitherK = exports.chainOptionK = exports.fromOptionK = exports.fromPredicate = exports.fromOption = void 0;
+var Chain_1 = __nccwpck_require__(2372);
+var function_1 = __nccwpck_require__(6985);
+var _ = __importStar(__nccwpck_require__(1840));
+function fromOption(F) {
+    return function (onNone) { return function (ma) { return F.fromEither(_.isNone(ma) ? _.left(onNone()) : _.right(ma.value)); }; };
+}
+exports.fromOption = fromOption;
+function fromPredicate(F) {
+    return function (predicate, onFalse) {
+        return function (a) {
+            return F.fromEither(predicate(a) ? _.right(a) : _.left(onFalse(a)));
+        };
+    };
+}
+exports.fromPredicate = fromPredicate;
+function fromOptionK(F) {
+    var fromOptionF = fromOption(F);
+    return function (onNone) {
+        var from = fromOptionF(onNone);
+        return function (f) { return (0, function_1.flow)(f, from); };
+    };
+}
+exports.fromOptionK = fromOptionK;
+function chainOptionK(F, M) {
+    var fromOptionKF = fromOptionK(F);
+    return function (onNone) {
+        var from = fromOptionKF(onNone);
+        return function (f) { return function (ma) { return M.chain(ma, from(f)); }; };
+    };
+}
+exports.chainOptionK = chainOptionK;
+function fromEitherK(F) {
+    return function (f) { return (0, function_1.flow)(f, F.fromEither); };
+}
+exports.fromEitherK = fromEitherK;
+function chainEitherK(F, M) {
+    var fromEitherKF = fromEitherK(F);
+    return function (f) { return function (ma) { return M.chain(ma, fromEitherKF(f)); }; };
+}
+exports.chainEitherK = chainEitherK;
+function chainFirstEitherK(F, M) {
+    var tapEitherM = tapEither(F, M);
+    return function (f) { return function (ma) { return tapEitherM(ma, f); }; };
+}
+exports.chainFirstEitherK = chainFirstEitherK;
+function filterOrElse(F, M) {
+    return function (predicate, onFalse) {
+        return function (ma) {
+            return M.chain(ma, function (a) { return F.fromEither(predicate(a) ? _.right(a) : _.left(onFalse(a))); });
+        };
+    };
+}
+exports.filterOrElse = filterOrElse;
+/** @internal */
+function tapEither(F, M) {
+    var fromEither = fromEitherK(F);
+    var tapM = (0, Chain_1.tap)(M);
+    return function (self, f) { return tapM(self, fromEither(f)); };
+}
+exports.tapEither = tapEither;
+
+
+/***/ }),
+
+/***/ 7948:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.tapIO = exports.chainFirstIOK = exports.chainIOK = exports.fromIOK = void 0;
+/**
+ * Lift a computation from the `IO` monad
+ *
+ * @since 2.10.0
+ */
+var Chain_1 = __nccwpck_require__(2372);
+var function_1 = __nccwpck_require__(6985);
+function fromIOK(F) {
+    return function (f) { return (0, function_1.flow)(f, F.fromIO); };
+}
+exports.fromIOK = fromIOK;
+function chainIOK(F, M) {
+    return function (f) {
+        var g = (0, function_1.flow)(f, F.fromIO);
+        return function (first) { return M.chain(first, g); };
+    };
+}
+exports.chainIOK = chainIOK;
+function chainFirstIOK(F, M) {
+    var tapIOM = tapIO(F, M);
+    return function (f) { return function (first) { return tapIOM(first, f); }; };
+}
+exports.chainFirstIOK = chainFirstIOK;
+/** @internal */
+function tapIO(F, M) {
+    var chainFirstM = (0, Chain_1.tap)(M);
+    return function (self, f) { return chainFirstM(self, (0, function_1.flow)(f, F.fromIO)); };
+}
+exports.tapIO = tapIO;
+
+
+/***/ }),
+
+/***/ 2038:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.tapTask = exports.chainFirstTaskK = exports.chainTaskK = exports.fromTaskK = void 0;
+/**
+ * Lift a computation from the `Task` monad
+ *
+ * @since 2.10.0
+ */
+var Chain_1 = __nccwpck_require__(2372);
+var function_1 = __nccwpck_require__(6985);
+function fromTaskK(F) {
+    return function (f) { return (0, function_1.flow)(f, F.fromTask); };
+}
+exports.fromTaskK = fromTaskK;
+function chainTaskK(F, M) {
+    return function (f) {
+        var g = (0, function_1.flow)(f, F.fromTask);
+        return function (first) { return M.chain(first, g); };
+    };
+}
+exports.chainTaskK = chainTaskK;
+function chainFirstTaskK(F, M) {
+    var tapTaskM = tapTask(F, M);
+    return function (f) { return function (first) { return tapTaskM(first, f); }; };
+}
+exports.chainFirstTaskK = chainFirstTaskK;
+/** @internal */
+function tapTask(F, M) {
+    var tapM = (0, Chain_1.tap)(M);
+    return function (self, f) { return tapM(self, (0, function_1.flow)(f, F.fromTask)); };
+}
+exports.tapTask = tapTask;
+
+
+/***/ }),
+
+/***/ 5533:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.asUnit = exports.as = exports.getFunctorComposition = exports["let"] = exports.bindTo = exports.flap = exports.map = void 0;
+/**
+ * A `Functor` is a type constructor which supports a mapping operation `map`.
+ *
+ * `map` can be used to turn functions `a -> b` into functions `f a -> f b` whose argument and return types use the type
+ * constructor `f` to represent some computational context.
+ *
+ * Instances must satisfy the following laws:
+ *
+ * 1. Identity: `F.map(fa, a => a) <-> fa`
+ * 2. Composition: `F.map(fa, a => bc(ab(a))) <-> F.map(F.map(fa, ab), bc)`
+ *
+ * @since 2.0.0
+ */
+var function_1 = __nccwpck_require__(6985);
+function map(F, G) {
+    return function (f) { return function (fa) { return F.map(fa, function (ga) { return G.map(ga, f); }); }; };
+}
+exports.map = map;
+function flap(F) {
+    return function (a) { return function (fab) { return F.map(fab, function (f) { return f(a); }); }; };
+}
+exports.flap = flap;
+function bindTo(F) {
+    return function (name) { return function (fa) { return F.map(fa, function (a) {
+        var _a;
+        return (_a = {}, _a[name] = a, _a);
+    }); }; };
+}
+exports.bindTo = bindTo;
+function let_(F) {
+    return function (name, f) { return function (fa) { return F.map(fa, function (a) {
+        var _a;
+        return Object.assign({}, a, (_a = {}, _a[name] = f(a), _a));
+    }); }; };
+}
+exports["let"] = let_;
+/** @deprecated */
+function getFunctorComposition(F, G) {
+    var _map = map(F, G);
+    return {
+        map: function (fga, f) { return (0, function_1.pipe)(fga, _map(f)); }
+    };
+}
+exports.getFunctorComposition = getFunctorComposition;
+/** @internal */
+function as(F) {
+    return function (self, b) { return F.map(self, function () { return b; }); };
+}
+exports.as = as;
+/** @internal */
+function asUnit(F) {
+    var asM = as(F);
+    return function (self) { return asM(self, undefined); };
+}
+exports.asUnit = asUnit;
+
+
+/***/ }),
+
+/***/ 179:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * A `Magma` is a pair `(A, concat)` in which `A` is a non-empty set and `concat` is a binary operation on `A`
+ *
+ * See [Semigroup](https://gcanti.github.io/fp-ts/modules/Semigroup.ts.html) for some instances.
+ *
+ * @since 2.0.0
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.concatAll = exports.endo = exports.filterSecond = exports.filterFirst = exports.reverse = void 0;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * The dual of a `Magma`, obtained by swapping the arguments of `concat`.
+ *
+ * @example
+ * import { reverse, concatAll } from 'fp-ts/Magma'
+ * import * as N from 'fp-ts/number'
+ *
+ * const subAll = concatAll(reverse(N.MagmaSub))(0)
+ *
+ * assert.deepStrictEqual(subAll([1, 2, 3]), 2)
+ *
+ * @since 2.11.0
+ */
+var reverse = function (M) { return ({
+    concat: function (first, second) { return M.concat(second, first); }
+}); };
+exports.reverse = reverse;
+/**
+ * @since 2.11.0
+ */
+var filterFirst = function (predicate) {
+    return function (M) { return ({
+        concat: function (first, second) { return (predicate(first) ? M.concat(first, second) : second); }
+    }); };
+};
+exports.filterFirst = filterFirst;
+/**
+ * @since 2.11.0
+ */
+var filterSecond = function (predicate) {
+    return function (M) { return ({
+        concat: function (first, second) { return (predicate(second) ? M.concat(first, second) : first); }
+    }); };
+};
+exports.filterSecond = filterSecond;
+/**
+ * @since 2.11.0
+ */
+var endo = function (f) {
+    return function (M) { return ({
+        concat: function (first, second) { return M.concat(f(first), f(second)); }
+    }); };
+};
+exports.endo = endo;
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * Given a sequence of `as`, concat them and return the total.
+ *
+ * If `as` is empty, return the provided `startWith` value.
+ *
+ * @example
+ * import { concatAll } from 'fp-ts/Magma'
+ * import * as N from 'fp-ts/number'
+ *
+ * const subAll = concatAll(N.MagmaSub)(0)
+ *
+ * assert.deepStrictEqual(subAll([1, 2, 3]), -6)
+ *
+ * @since 2.11.0
+ */
+var concatAll = function (M) {
+    return function (startWith) {
+        return function (as) {
+            return as.reduce(function (a, acc) { return M.concat(a, acc); }, startWith);
+        };
+    };
+};
+exports.concatAll = concatAll;
+
+
+/***/ }),
+
+/***/ 240:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.mapWithIndex = exports.map = exports.flatten = exports.duplicate = exports.extend = exports.flatMap = exports.ap = exports.alt = exports.altW = exports.chunksOf = exports.splitAt = exports.chop = exports.chainWithIndex = exports.foldMap = exports.foldMapWithIndex = exports.intersperse = exports.prependAll = exports.unzip = exports.zip = exports.zipWith = exports.of = exports.copy = exports.modifyAt = exports.updateAt = exports.insertAt = exports.sort = exports.groupBy = exports.group = exports.reverse = exports.concat = exports.concatW = exports.unappend = exports.unprepend = exports.range = exports.replicate = exports.makeBy = exports.fromArray = exports.fromReadonlyNonEmptyArray = exports.rotate = exports.union = exports.sortBy = exports.uniq = exports.unsafeUpdateAt = exports.unsafeInsertAt = exports.append = exports.appendW = exports.prepend = exports.prependW = exports.isOutOfBound = exports.isNonEmpty = void 0;
+exports.chain = exports.intercalate = exports.updateLast = exports.modifyLast = exports.updateHead = exports.modifyHead = exports.matchRight = exports.matchLeft = exports.concatAll = exports.max = exports.min = exports.init = exports.last = exports.tail = exports.head = exports.apS = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.Comonad = exports.Alt = exports.TraversableWithIndex = exports.Traversable = exports.FoldableWithIndex = exports.Foldable = exports.Monad = exports.chainFirst = exports.Chain = exports.Applicative = exports.apSecond = exports.apFirst = exports.Apply = exports.FunctorWithIndex = exports.Pointed = exports.flap = exports.Functor = exports.getUnionSemigroup = exports.getEq = exports.getSemigroup = exports.getShow = exports.URI = exports.extract = exports.traverseWithIndex = exports.sequence = exports.traverse = exports.reduceRightWithIndex = exports.reduceRight = exports.reduceWithIndex = exports.reduce = void 0;
+exports.nonEmptyArray = exports.fold = exports.prependToAll = exports.snoc = exports.cons = exports.unsnoc = exports.uncons = exports.filterWithIndex = exports.filter = exports.groupSort = void 0;
+var Apply_1 = __nccwpck_require__(205);
+var Chain_1 = __nccwpck_require__(2372);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var Ord_1 = __nccwpck_require__(6685);
+var RNEA = __importStar(__nccwpck_require__(8630));
+// -------------------------------------------------------------------------------------
+// internal
+// -------------------------------------------------------------------------------------
+/**
+ * @internal
+ */
+var isNonEmpty = function (as) { return as.length > 0; };
+exports.isNonEmpty = isNonEmpty;
+/**
+ * @internal
+ */
+var isOutOfBound = function (i, as) { return i < 0 || i >= as.length; };
+exports.isOutOfBound = isOutOfBound;
+/**
+ * @internal
+ */
+var prependW = function (head) {
+    return function (tail) {
+        return __spreadArray([head], tail, true);
+    };
+};
+exports.prependW = prependW;
+/**
+ * @internal
+ */
+exports.prepend = exports.prependW;
+/**
+ * @internal
+ */
+var appendW = function (end) {
+    return function (init) {
+        return __spreadArray(__spreadArray([], init, true), [end], false);
+    };
+};
+exports.appendW = appendW;
+/**
+ * @internal
+ */
+exports.append = exports.appendW;
+/**
+ * @internal
+ */
+var unsafeInsertAt = function (i, a, as) {
+    if ((0, exports.isNonEmpty)(as)) {
+        var xs = (0, exports.fromReadonlyNonEmptyArray)(as);
+        xs.splice(i, 0, a);
+        return xs;
+    }
+    return [a];
+};
+exports.unsafeInsertAt = unsafeInsertAt;
+/**
+ * @internal
+ */
+var unsafeUpdateAt = function (i, a, as) {
+    var xs = (0, exports.fromReadonlyNonEmptyArray)(as);
+    xs[i] = a;
+    return xs;
+};
+exports.unsafeUpdateAt = unsafeUpdateAt;
+/**
+ * Remove duplicates from a `NonEmptyArray`, keeping the first occurrence of an element.
+ *
+ * @example
+ * import { uniq } from 'fp-ts/NonEmptyArray'
+ * import * as N from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(uniq(N.Eq)([1, 2, 1]), [1, 2])
+ *
+ * @since 2.11.0
+ */
+var uniq = function (E) {
+    return function (as) {
+        if (as.length === 1) {
+            return (0, exports.copy)(as);
+        }
+        var out = [(0, exports.head)(as)];
+        var rest = (0, exports.tail)(as);
+        var _loop_1 = function (a) {
+            if (out.every(function (o) { return !E.equals(o, a); })) {
+                out.push(a);
+            }
+        };
+        for (var _i = 0, rest_1 = rest; _i < rest_1.length; _i++) {
+            var a = rest_1[_i];
+            _loop_1(a);
+        }
+        return out;
+    };
+};
+exports.uniq = uniq;
+/**
+ * Sort the elements of a `NonEmptyArray` in increasing order, where elements are compared using first `ords[0]`, then `ords[1]`,
+ * etc...
+ *
+ * @example
+ * import * as NEA from 'fp-ts/NonEmptyArray'
+ * import { contramap } from 'fp-ts/Ord'
+ * import * as S from 'fp-ts/string'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * interface Person {
+ *   name: string
+ *   age: number
+ * }
+ *
+ * const byName = pipe(S.Ord, contramap((p: Person) => p.name))
+ *
+ * const byAge = pipe(N.Ord, contramap((p: Person) => p.age))
+ *
+ * const sortByNameByAge = NEA.sortBy([byName, byAge])
+ *
+ * const persons: NEA.NonEmptyArray<Person> = [
+ *   { name: 'a', age: 1 },
+ *   { name: 'b', age: 3 },
+ *   { name: 'c', age: 2 },
+ *   { name: 'b', age: 2 }
+ * ]
+ *
+ * assert.deepStrictEqual(sortByNameByAge(persons), [
+ *   { name: 'a', age: 1 },
+ *   { name: 'b', age: 2 },
+ *   { name: 'b', age: 3 },
+ *   { name: 'c', age: 2 }
+ * ])
+ *
+ * @since 2.11.0
+ */
+var sortBy = function (ords) {
+    if ((0, exports.isNonEmpty)(ords)) {
+        var M = (0, Ord_1.getMonoid)();
+        return (0, exports.sort)(ords.reduce(M.concat, M.empty));
+    }
+    return exports.copy;
+};
+exports.sortBy = sortBy;
+/**
+ * @since 2.11.0
+ */
+var union = function (E) {
+    var uniqE = (0, exports.uniq)(E);
+    return function (second) { return function (first) { return uniqE((0, function_1.pipe)(first, concat(second))); }; };
+};
+exports.union = union;
+/**
+ * Rotate a `NonEmptyArray` by `n` steps.
+ *
+ * @example
+ * import { rotate } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(rotate(2)([1, 2, 3, 4, 5]), [4, 5, 1, 2, 3])
+ * assert.deepStrictEqual(rotate(-2)([1, 2, 3, 4, 5]), [3, 4, 5, 1, 2])
+ *
+ * @since 2.11.0
+ */
+var rotate = function (n) {
+    return function (as) {
+        var len = as.length;
+        var m = Math.round(n) % len;
+        if ((0, exports.isOutOfBound)(Math.abs(m), as) || m === 0) {
+            return (0, exports.copy)(as);
+        }
+        if (m < 0) {
+            var _a = (0, exports.splitAt)(-m)(as), f = _a[0], s = _a[1];
+            return (0, function_1.pipe)(s, concat(f));
+        }
+        else {
+            return (0, exports.rotate)(m - len)(as);
+        }
+    };
+};
+exports.rotate = rotate;
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * @category conversions
+ * @since 2.10.0
+ */
+exports.fromReadonlyNonEmptyArray = _.fromReadonlyNonEmptyArray;
+/**
+ * Builds a `NonEmptyArray` from an `Array` returning `none` if `as` is an empty array
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+var fromArray = function (as) { return ((0, exports.isNonEmpty)(as) ? _.some(as) : _.none); };
+exports.fromArray = fromArray;
+/**
+ * Return a `NonEmptyArray` of length `n` with element `i` initialized with `f(i)`.
+ *
+ * **Note**. `n` is normalized to a natural number.
+ *
+ * @example
+ * import { makeBy } from 'fp-ts/NonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const double = (n: number): number => n * 2
+ * assert.deepStrictEqual(pipe(5, makeBy(double)), [0, 2, 4, 6, 8])
+ *
+ * @category constructors
+ * @since 2.11.0
+ */
+var makeBy = function (f) {
+    return function (n) {
+        var j = Math.max(0, Math.floor(n));
+        var out = [f(0)];
+        for (var i = 1; i < j; i++) {
+            out.push(f(i));
+        }
+        return out;
+    };
+};
+exports.makeBy = makeBy;
+/**
+ * Create a `NonEmptyArray` containing a value repeated the specified number of times.
+ *
+ * **Note**. `n` is normalized to a natural number.
+ *
+ * @example
+ * import { replicate } from 'fp-ts/NonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe(3, replicate('a')), ['a', 'a', 'a'])
+ *
+ * @category constructors
+ * @since 2.11.0
+ */
+var replicate = function (a) { return (0, exports.makeBy)(function () { return a; }); };
+exports.replicate = replicate;
+/**
+ * Create a `NonEmptyArray` containing a range of integers, including both endpoints.
+ *
+ * @example
+ * import { range } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(range(1, 5), [1, 2, 3, 4, 5])
+ *
+ * @category constructors
+ * @since 2.11.0
+ */
+var range = function (start, end) {
+    return start <= end ? (0, exports.makeBy)(function (i) { return start + i; })(end - start + 1) : [start];
+};
+exports.range = range;
+/**
+ * Return the tuple of the `head` and the `tail`.
+ *
+ * @example
+ * import { unprepend } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(unprepend([1, 2, 3]), [1, [2, 3]])
+ *
+ * @since 2.9.0
+ */
+var unprepend = function (as) { return [(0, exports.head)(as), (0, exports.tail)(as)]; };
+exports.unprepend = unprepend;
+/**
+ * Return the tuple of the `init` and the `last`.
+ *
+ * @example
+ * import { unappend } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(unappend([1, 2, 3, 4]), [[1, 2, 3], 4])
+ *
+ * @since 2.9.0
+ */
+var unappend = function (as) { return [(0, exports.init)(as), (0, exports.last)(as)]; };
+exports.unappend = unappend;
+function concatW(second) {
+    return function (first) { return first.concat(second); };
+}
+exports.concatW = concatW;
+function concat(x, y) {
+    return y ? x.concat(y) : function (y) { return y.concat(x); };
+}
+exports.concat = concat;
+/**
+ * @since 2.0.0
+ */
+var reverse = function (as) { return __spreadArray([(0, exports.last)(as)], as.slice(0, -1).reverse(), true); };
+exports.reverse = reverse;
+function group(E) {
+    return function (as) {
+        var len = as.length;
+        if (len === 0) {
+            return [];
+        }
+        var out = [];
+        var head = as[0];
+        var nea = [head];
+        for (var i = 1; i < len; i++) {
+            var a = as[i];
+            if (E.equals(a, head)) {
+                nea.push(a);
+            }
+            else {
+                out.push(nea);
+                head = a;
+                nea = [head];
+            }
+        }
+        out.push(nea);
+        return out;
+    };
+}
+exports.group = group;
+/**
+ * Splits an array into sub-non-empty-arrays stored in an object, based on the result of calling a `string`-returning
+ * function on each element, and grouping the results according to values returned
+ *
+ * @example
+ * import { groupBy } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(groupBy((s: string) => String(s.length))(['a', 'b', 'ab']), {
+ *   '1': ['a', 'b'],
+ *   '2': ['ab']
+ * })
+ *
+ * @since 2.0.0
+ */
+var groupBy = function (f) {
+    return function (as) {
+        var out = {};
+        for (var _i = 0, as_1 = as; _i < as_1.length; _i++) {
+            var a = as_1[_i];
+            var k = f(a);
+            if (_.has.call(out, k)) {
+                out[k].push(a);
+            }
+            else {
+                out[k] = [a];
+            }
+        }
+        return out;
+    };
+};
+exports.groupBy = groupBy;
+/**
+ * @since 2.0.0
+ */
+var sort = function (O) {
+    return function (as) {
+        return as.slice().sort(O.compare);
+    };
+};
+exports.sort = sort;
+/**
+ * @since 2.0.0
+ */
+var insertAt = function (i, a) {
+    return function (as) {
+        return i < 0 || i > as.length ? _.none : _.some((0, exports.unsafeInsertAt)(i, a, as));
+    };
+};
+exports.insertAt = insertAt;
+/**
+ * @since 2.0.0
+ */
+var updateAt = function (i, a) {
+    return (0, exports.modifyAt)(i, function () { return a; });
+};
+exports.updateAt = updateAt;
+/**
+ * @since 2.0.0
+ */
+var modifyAt = function (i, f) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(i, as) ? _.none : _.some((0, exports.unsafeUpdateAt)(i, f(as[i]), as));
+    };
+};
+exports.modifyAt = modifyAt;
+/**
+ * @since 2.0.0
+ */
+exports.copy = exports.fromReadonlyNonEmptyArray;
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+var of = function (a) { return [a]; };
+exports.of = of;
+/**
+ * @since 2.5.1
+ */
+var zipWith = function (as, bs, f) {
+    var cs = [f(as[0], bs[0])];
+    var len = Math.min(as.length, bs.length);
+    for (var i = 1; i < len; i++) {
+        cs[i] = f(as[i], bs[i]);
+    }
+    return cs;
+};
+exports.zipWith = zipWith;
+function zip(as, bs) {
+    if (bs === undefined) {
+        return function (bs) { return zip(bs, as); };
+    }
+    return (0, exports.zipWith)(as, bs, function (a, b) { return [a, b]; });
+}
+exports.zip = zip;
+/**
+ * @since 2.5.1
+ */
+var unzip = function (abs) {
+    var fa = [abs[0][0]];
+    var fb = [abs[0][1]];
+    for (var i = 1; i < abs.length; i++) {
+        fa[i] = abs[i][0];
+        fb[i] = abs[i][1];
+    }
+    return [fa, fb];
+};
+exports.unzip = unzip;
+/**
+ * Prepend an element to every member of an array
+ *
+ * @example
+ * import { prependAll } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(prependAll(9)([1, 2, 3, 4]), [9, 1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.10.0
+ */
+var prependAll = function (middle) {
+    return function (as) {
+        var out = [middle, as[0]];
+        for (var i = 1; i < as.length; i++) {
+            out.push(middle, as[i]);
+        }
+        return out;
+    };
+};
+exports.prependAll = prependAll;
+/**
+ * Places an element in between members of an array
+ *
+ * @example
+ * import { intersperse } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(intersperse(9)([1, 2, 3, 4]), [1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.9.0
+ */
+var intersperse = function (middle) {
+    return function (as) {
+        var rest = (0, exports.tail)(as);
+        return (0, exports.isNonEmpty)(rest) ? (0, function_1.pipe)(rest, (0, exports.prependAll)(middle), (0, exports.prepend)((0, exports.head)(as))) : (0, exports.copy)(as);
+    };
+};
+exports.intersperse = intersperse;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+exports.foldMapWithIndex = RNEA.foldMapWithIndex;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+exports.foldMap = RNEA.foldMap;
+/**
+ * @category sequencing
+ * @since 2.10.0
+ */
+var chainWithIndex = function (f) {
+    return function (as) {
+        var out = (0, exports.fromReadonlyNonEmptyArray)(f(0, (0, exports.head)(as)));
+        for (var i = 1; i < as.length; i++) {
+            out.push.apply(out, f(i, as[i]));
+        }
+        return out;
+    };
+};
+exports.chainWithIndex = chainWithIndex;
+/**
+ * @since 2.10.0
+ */
+var chop = function (f) {
+    return function (as) {
+        var _a = f(as), b = _a[0], rest = _a[1];
+        var out = [b];
+        var next = rest;
+        while ((0, exports.isNonEmpty)(next)) {
+            var _b = f(next), b_1 = _b[0], rest_2 = _b[1];
+            out.push(b_1);
+            next = rest_2;
+        }
+        return out;
+    };
+};
+exports.chop = chop;
+/**
+ * Splits a `NonEmptyArray` into two pieces, the first piece has max `n` elements.
+ *
+ * @since 2.10.0
+ */
+var splitAt = function (n) {
+    return function (as) {
+        var m = Math.max(1, n);
+        return m >= as.length ? [(0, exports.copy)(as), []] : [(0, function_1.pipe)(as.slice(1, m), (0, exports.prepend)((0, exports.head)(as))), as.slice(m)];
+    };
+};
+exports.splitAt = splitAt;
+/**
+ * @since 2.10.0
+ */
+var chunksOf = function (n) { return (0, exports.chop)((0, exports.splitAt)(n)); };
+exports.chunksOf = chunksOf;
+/* istanbul ignore next */
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+/* istanbul ignore next */
+var _mapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.mapWithIndex)(f)); };
+/* istanbul ignore next */
+var _ap = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+/* istanbul ignore next */
+var _extend = function (wa, f) { return (0, function_1.pipe)(wa, (0, exports.extend)(f)); };
+/* istanbul ignore next */
+var _reduce = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduce)(b, f)); };
+/* istanbul ignore next */
+var _foldMap = function (M) {
+    var foldMapM = (0, exports.foldMap)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapM(f)); };
+};
+/* istanbul ignore next */
+var _reduceRight = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduceRight)(b, f)); };
+/* istanbul ignore next */
+var _traverse = function (F) {
+    var traverseF = (0, exports.traverse)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseF(f)); };
+};
+/* istanbul ignore next */
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+/* istanbul ignore next */
+var _reduceWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceWithIndex)(b, f));
+};
+/* istanbul ignore next */
+var _foldMapWithIndex = function (M) {
+    var foldMapWithIndexM = (0, exports.foldMapWithIndex)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapWithIndexM(f)); };
+};
+/* istanbul ignore next */
+var _reduceRightWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceRightWithIndex)(b, f));
+};
+/* istanbul ignore next */
+var _traverseWithIndex = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseWithIndexF(f)); };
+};
+/**
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @example
+ * import * as NEA from 'fp-ts/NonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3] as NEA.NonEmptyArray<number>,
+ *     NEA.altW(() => ['a', 'b'])
+ *   ),
+ *   [1, 2, 3, 'a', 'b']
+ * )
+ *
+ * @category error handling
+ * @since 2.9.0
+ */
+var altW = function (that) {
+    return function (as) {
+        return (0, function_1.pipe)(as, concatW(that()));
+    };
+};
+exports.altW = altW;
+/**
+ * Identifies an associative operation on a type constructor. It is similar to `Semigroup`, except that it applies to
+ * types of kind `* -> *`.
+ *
+ * In case of `NonEmptyArray` concatenates the inputs into a single array.
+ *
+ * @example
+ * import * as NEA from 'fp-ts/NonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     NEA.alt(() => [4, 5])
+ *   ),
+ *   [1, 2, 3, 4, 5]
+ * )
+ *
+ * @category error handling
+ * @since 2.6.2
+ */
+exports.alt = exports.altW;
+/**
+ * Apply a function to an argument under a type constructor.
+ *
+ * @since 2.0.0
+ */
+var ap = function (as) {
+    return (0, exports.flatMap)(function (f) { return (0, function_1.pipe)(as, (0, exports.map)(f)); });
+};
+exports.ap = ap;
+/**
+ * @example
+ * import * as NEA from 'fp-ts/NonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     NEA.flatMap((n) => [`a${n}`, `b${n}`])
+ *   ),
+ *   ['a1', 'b1', 'a2', 'b2', 'a3', 'b3']
+ * )
+ *
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) {
+    return (0, function_1.pipe)(ma, (0, exports.chainWithIndex)(function (i, a) { return f(a, i); }));
+});
+/**
+ * @since 2.0.0
+ */
+var extend = function (f) {
+    return function (as) {
+        var next = (0, exports.tail)(as);
+        var out = [f(as)];
+        while ((0, exports.isNonEmpty)(next)) {
+            out.push(f(next));
+            next = (0, exports.tail)(next);
+        }
+        return out;
+    };
+};
+exports.extend = extend;
+/**
+ * @since 2.5.0
+ */
+exports.duplicate = (0, exports.extend)(function_1.identity);
+/**
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.flatten = (0, exports.flatMap)(function_1.identity);
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: F<A>) => F<B>` whose argument and return types
+ * use the type constructor `F` to represent some computational context.
+ *
+ * @category mapping
+ * @since 2.0.0
+ */
+var map = function (f) { return (0, exports.mapWithIndex)(function (_, a) { return f(a); }); };
+exports.map = map;
+/**
+ * @category mapping
+ * @since 2.0.0
+ */
+var mapWithIndex = function (f) {
+    return function (as) {
+        var out = [f(0, (0, exports.head)(as))];
+        for (var i = 1; i < as.length; i++) {
+            out.push(f(i, as[i]));
+        }
+        return out;
+    };
+};
+exports.mapWithIndex = mapWithIndex;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduce = RNEA.reduce;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduceWithIndex = RNEA.reduceWithIndex;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduceRight = RNEA.reduceRight;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+exports.reduceRightWithIndex = RNEA.reduceRightWithIndex;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var traverse = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (f) { return traverseWithIndexF(function (_, a) { return f(a); }); };
+};
+exports.traverse = traverse;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var sequence = function (F) { return (0, exports.traverseWithIndex)(F)(function (_, a) { return a; }); };
+exports.sequence = sequence;
+/**
+ * @category sequencing
+ * @since 2.6.3
+ */
+var traverseWithIndex = function (F) {
+    return function (f) {
+        return function (as) {
+            var out = F.map(f(0, (0, exports.head)(as)), exports.of);
+            for (var i = 1; i < as.length; i++) {
+                out = F.ap(F.map(out, function (bs) { return function (b) { return (0, function_1.pipe)(bs, (0, exports.append)(b)); }; }), f(i, as[i]));
+            }
+            return out;
+        };
+    };
+};
+exports.traverseWithIndex = traverseWithIndex;
+/**
+ * @since 2.7.0
+ */
+exports.extract = RNEA.head;
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'NonEmptyArray';
+/**
+ * @category instances
+ * @since 2.0.0
+ */
+exports.getShow = RNEA.getShow;
+/**
+ * Builds a `Semigroup` instance for `NonEmptyArray`
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getSemigroup = function () { return ({
+    concat: concat
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * @example
+ * import { getEq } from 'fp-ts/NonEmptyArray'
+ * import * as N from 'fp-ts/number'
+ *
+ * const E = getEq(N.Eq)
+ * assert.strictEqual(E.equals([1, 2], [1, 2]), true)
+ * assert.strictEqual(E.equals([1, 2], [1, 3]), false)
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+exports.getEq = RNEA.getEq;
+/**
+ * @since 2.11.0
+ */
+var getUnionSemigroup = function (E) {
+    var unionE = (0, exports.union)(E);
+    return {
+        concat: function (first, second) { return unionE(second)(first); }
+    };
+};
+exports.getUnionSemigroup = getUnionSemigroup;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FunctorWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Apply = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap
+};
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.5.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.Apply);
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.5.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.Apply);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Applicative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap
+};
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.chainFirst = 
+/*#__PURE__*/ (0, Chain_1.chainFirst)(exports.Chain);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Foldable = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FoldableWithIndex = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Traversable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.TraversableWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverseWithIndex: _traverseWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Comonad = {
+    URI: exports.URI,
+    map: _map,
+    extend: _extend,
+    extract: exports.extract
+};
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = (0, Chain_1.bind)(exports.Chain);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.Apply);
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.0.0
+ */
+exports.head = RNEA.head;
+/**
+ * @since 2.0.0
+ */
+var tail = function (as) { return as.slice(1); };
+exports.tail = tail;
+/**
+ * @since 2.0.0
+ */
+exports.last = RNEA.last;
+/**
+ * Get all but the last element of a non empty array, creating a new array.
+ *
+ * @example
+ * import { init } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(init([1, 2, 3]), [1, 2])
+ * assert.deepStrictEqual(init([1]), [])
+ *
+ * @since 2.2.0
+ */
+var init = function (as) { return as.slice(0, -1); };
+exports.init = init;
+/**
+ * @since 2.0.0
+ */
+exports.min = RNEA.min;
+/**
+ * @since 2.0.0
+ */
+exports.max = RNEA.max;
+/**
+ * @since 2.10.0
+ */
+var concatAll = function (S) {
+    return function (as) {
+        return as.reduce(S.concat);
+    };
+};
+exports.concatAll = concatAll;
+/**
+ * Break an `Array` into its first element and remaining elements.
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchLeft = function (f) {
+    return function (as) {
+        return f((0, exports.head)(as), (0, exports.tail)(as));
+    };
+};
+exports.matchLeft = matchLeft;
+/**
+ * Break an `Array` into its initial elements and the last element.
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchRight = function (f) {
+    return function (as) {
+        return f((0, exports.init)(as), (0, exports.last)(as));
+    };
+};
+exports.matchRight = matchRight;
+/**
+ * Apply a function to the head, creating a new `NonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var modifyHead = function (f) {
+    return function (as) {
+        return __spreadArray([f((0, exports.head)(as))], (0, exports.tail)(as), true);
+    };
+};
+exports.modifyHead = modifyHead;
+/**
+ * Change the head, creating a new `NonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var updateHead = function (a) { return (0, exports.modifyHead)(function () { return a; }); };
+exports.updateHead = updateHead;
+/**
+ * Apply a function to the last element, creating a new `NonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var modifyLast = function (f) {
+    return function (as) {
+        return (0, function_1.pipe)((0, exports.init)(as), (0, exports.append)(f((0, exports.last)(as))));
+    };
+};
+exports.modifyLast = modifyLast;
+/**
+ * Change the last element, creating a new `NonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var updateLast = function (a) { return (0, exports.modifyLast)(function () { return a; }); };
+exports.updateLast = updateLast;
+/**
+ * Places an element in between members of a `NonEmptyArray`, then folds the results using the provided `Semigroup`.
+ *
+ * @example
+ * import * as S from 'fp-ts/string'
+ * import { intercalate } from 'fp-ts/NonEmptyArray'
+ *
+ * assert.deepStrictEqual(intercalate(S.Semigroup)('-')(['a', 'b', 'c']), 'a-b-c')
+ *
+ * @since 2.12.0
+ */
+exports.intercalate = RNEA.intercalate;
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chain = exports.flatMap;
+function groupSort(O) {
+    var sortO = (0, exports.sort)(O);
+    var groupO = group(O);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? groupO(sortO(as)) : []); };
+}
+exports.groupSort = groupSort;
+function filter(predicate) {
+    return (0, exports.filterWithIndex)(function (_, a) { return predicate(a); });
+}
+exports.filter = filter;
+/**
+ * Use [`filterWithIndex`](./Array.ts.html#filterwithindex) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var filterWithIndex = function (predicate) {
+    return function (as) {
+        return (0, exports.fromArray)(as.filter(function (a, i) { return predicate(i, a); }));
+    };
+};
+exports.filterWithIndex = filterWithIndex;
+/**
+ * Use [`unprepend`](#unprepend) instead.
+ *
+ * @category zone of death
+ * @since 2.9.0
+ * @deprecated
+ */
+exports.uncons = exports.unprepend;
+/**
+ * Use [`unappend`](#unappend) instead.
+ *
+ * @category zone of death
+ * @since 2.9.0
+ * @deprecated
+ */
+exports.unsnoc = exports.unappend;
+function cons(head, tail) {
+    return tail === undefined ? (0, exports.prepend)(head) : (0, function_1.pipe)(tail, (0, exports.prepend)(head));
+}
+exports.cons = cons;
+/**
+ * Use [`append`](./Array.ts.html#append) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var snoc = function (init, end) { return (0, function_1.pipe)(init, (0, exports.append)(end)); };
+exports.snoc = snoc;
+/**
+ * Use [`prependAll`](#prependall) instead.
+ *
+ * @category zone of death
+ * @since 2.9.0
+ * @deprecated
+ */
+exports.prependToAll = exports.prependAll;
+/**
+ * Use [`concatAll`](#concatall) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.fold = RNEA.concatAll;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `NEA.Functor` instead of `NEA.nonEmptyArray`
+ * (where `NEA` is from `import NEA from 'fp-ts/NonEmptyArray'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.nonEmptyArray = {
+    URI: exports.URI,
+    of: exports.of,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    ap: _ap,
+    chain: exports.flatMap,
+    extend: _extend,
+    extract: exports.extract,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverseWithIndex: _traverseWithIndex,
+    alt: _alt
+};
+
+
+/***/ }),
+
+/***/ 2569:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Witherable = exports.wilt = exports.wither = exports.Traversable = exports.sequence = exports.traverse = exports.Filterable = exports.partitionMap = exports.partition = exports.filterMap = exports.filter = exports.Compactable = exports.separate = exports.compact = exports.Extend = exports.extend = exports.Alternative = exports.guard = exports.Zero = exports.zero = exports.Alt = exports.alt = exports.altW = exports.orElse = exports.Foldable = exports.reduceRight = exports.foldMap = exports.reduce = exports.Monad = exports.Chain = exports.flatMap = exports.Applicative = exports.Apply = exports.ap = exports.Pointed = exports.of = exports.asUnit = exports.as = exports.Functor = exports.map = exports.getMonoid = exports.getOrd = exports.getEq = exports.getShow = exports.URI = exports.getRight = exports.getLeft = exports.fromPredicate = exports.some = exports.none = void 0;
+exports.getFirstMonoid = exports.getApplyMonoid = exports.getApplySemigroup = exports.option = exports.mapNullable = exports.getRefinement = exports.chainFirst = exports.chain = exports.sequenceArray = exports.traverseArray = exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndex = exports.traverseReadonlyNonEmptyArrayWithIndex = exports.ApT = exports.apS = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.exists = exports.elem = exports.toUndefined = exports.toNullable = exports.chainNullableK = exports.fromNullableK = exports.tryCatchK = exports.tryCatch = exports.fromNullable = exports.chainFirstEitherK = exports.chainEitherK = exports.fromEitherK = exports.duplicate = exports.tapEither = exports.tap = exports.flatten = exports.apSecond = exports.apFirst = exports.flap = exports.getOrElse = exports.getOrElseW = exports.fold = exports.match = exports.foldW = exports.matchW = exports.isNone = exports.isSome = exports.FromEither = exports.fromEither = exports.MonadThrow = exports.throwError = void 0;
+exports.getLastMonoid = void 0;
+var Applicative_1 = __nccwpck_require__(4766);
+var Apply_1 = __nccwpck_require__(205);
+var chainable = __importStar(__nccwpck_require__(2372));
+var FromEither_1 = __nccwpck_require__(1964);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var Predicate_1 = __nccwpck_require__(6382);
+var Semigroup_1 = __nccwpck_require__(6339);
+var Separated_1 = __nccwpck_require__(5877);
+var Witherable_1 = __nccwpck_require__(4384);
+var Zero_1 = __nccwpck_require__(9734);
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * `None` doesn't have a constructor, instead you can use it directly as a value. Represents a missing value.
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.none = _.none;
+/**
+ * Constructs a `Some`. Represents an optional value that exists.
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.some = _.some;
+function fromPredicate(predicate) {
+    return function (a) { return (predicate(a) ? (0, exports.some)(a) : exports.none); };
+}
+exports.fromPredicate = fromPredicate;
+/**
+ * Returns the `Left` value of an `Either` if possible.
+ *
+ * @example
+ * import { getLeft, none, some } from 'fp-ts/Option'
+ * import { right, left } from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(getLeft(right(1)), none)
+ * assert.deepStrictEqual(getLeft(left('a')), some('a'))
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+var getLeft = function (ma) { return (ma._tag === 'Right' ? exports.none : (0, exports.some)(ma.left)); };
+exports.getLeft = getLeft;
+/**
+ * Returns the `Right` value of an `Either` if possible.
+ *
+ * @example
+ * import { getRight, none, some } from 'fp-ts/Option'
+ * import { right, left } from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(getRight(right(1)), some(1))
+ * assert.deepStrictEqual(getRight(left('a')), none)
+ *
+ * @category constructors
+ * @since 2.0.0
+ */
+var getRight = function (ma) { return (ma._tag === 'Left' ? exports.none : (0, exports.some)(ma.right)); };
+exports.getRight = getRight;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+var _ap = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+var _reduce = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduce)(b, f)); };
+var _foldMap = function (M) {
+    var foldMapM = (0, exports.foldMap)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapM(f)); };
+};
+var _reduceRight = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduceRight)(b, f)); };
+var _traverse = function (F) {
+    var traverseF = (0, exports.traverse)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseF(f)); };
+};
+/* istanbul ignore next */
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+var _filter = function (fa, predicate) { return (0, function_1.pipe)(fa, (0, exports.filter)(predicate)); };
+/* istanbul ignore next */
+var _filterMap = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.filterMap)(f)); };
+/* istanbul ignore next */
+var _extend = function (wa, f) { return (0, function_1.pipe)(wa, (0, exports.extend)(f)); };
+/* istanbul ignore next */
+var _partition = function (fa, predicate) {
+    return (0, function_1.pipe)(fa, (0, exports.partition)(predicate));
+};
+/* istanbul ignore next */
+var _partitionMap = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.partitionMap)(f)); };
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'Option';
+/**
+ * @category instances
+ * @since 2.0.0
+ */
+var getShow = function (S) { return ({
+    show: function (ma) { return ((0, exports.isNone)(ma) ? 'none' : "some(".concat(S.show(ma.value), ")")); }
+}); };
+exports.getShow = getShow;
+/**
+ * @example
+ * import { none, some, getEq } from 'fp-ts/Option'
+ * import * as N from 'fp-ts/number'
+ *
+ * const E = getEq(N.Eq)
+ * assert.strictEqual(E.equals(none, none), true)
+ * assert.strictEqual(E.equals(none, some(1)), false)
+ * assert.strictEqual(E.equals(some(1), none), false)
+ * assert.strictEqual(E.equals(some(1), some(2)), false)
+ * assert.strictEqual(E.equals(some(1), some(1)), true)
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getEq = function (E) { return ({
+    equals: function (x, y) { return x === y || ((0, exports.isNone)(x) ? (0, exports.isNone)(y) : (0, exports.isNone)(y) ? false : E.equals(x.value, y.value)); }
+}); };
+exports.getEq = getEq;
+/**
+ * The `Ord` instance allows `Option` values to be compared with
+ * `compare`, whenever there is an `Ord` instance for
+ * the type the `Option` contains.
+ *
+ * `None` is considered to be less than any `Some` value.
+ *
+ *
+ * @example
+ * import { none, some, getOrd } from 'fp-ts/Option'
+ * import * as N from 'fp-ts/number'
+ *
+ * const O = getOrd(N.Ord)
+ * assert.strictEqual(O.compare(none, none), 0)
+ * assert.strictEqual(O.compare(none, some(1)), -1)
+ * assert.strictEqual(O.compare(some(1), none), 1)
+ * assert.strictEqual(O.compare(some(1), some(2)), -1)
+ * assert.strictEqual(O.compare(some(1), some(1)), 0)
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getOrd = function (O) { return ({
+    equals: (0, exports.getEq)(O).equals,
+    compare: function (x, y) { return (x === y ? 0 : (0, exports.isSome)(x) ? ((0, exports.isSome)(y) ? O.compare(x.value, y.value) : 1) : -1); }
+}); };
+exports.getOrd = getOrd;
+/**
+ * Monoid returning the left-most non-`None` value. If both operands are `Some`s then the inner values are
+ * concatenated using the provided `Semigroup`
+ *
+ * | x       | y       | concat(x, y)       |
+ * | ------- | ------- | ------------------ |
+ * | none    | none    | none               |
+ * | some(a) | none    | some(a)            |
+ * | none    | some(b) | some(b)            |
+ * | some(a) | some(b) | some(concat(a, b)) |
+ *
+ * @example
+ * import { getMonoid, some, none } from 'fp-ts/Option'
+ * import { SemigroupSum } from 'fp-ts/number'
+ *
+ * const M = getMonoid(SemigroupSum)
+ * assert.deepStrictEqual(M.concat(none, none), none)
+ * assert.deepStrictEqual(M.concat(some(1), none), some(1))
+ * assert.deepStrictEqual(M.concat(none, some(1)), some(1))
+ * assert.deepStrictEqual(M.concat(some(1), some(2)), some(3))
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getMonoid = function (S) { return ({
+    concat: function (x, y) { return ((0, exports.isNone)(x) ? y : (0, exports.isNone)(y) ? x : (0, exports.some)(S.concat(x.value, y.value))); },
+    empty: exports.none
+}); };
+exports.getMonoid = getMonoid;
+/**
+ * @category mapping
+ * @since 2.0.0
+ */
+var map = function (f) { return function (fa) {
+    return (0, exports.isNone)(fa) ? exports.none : (0, exports.some)(f(fa.value));
+}; };
+exports.map = map;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * Maps the `Some` value of this `Option` to the specified constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.as = (0, function_1.dual)(2, (0, Functor_1.as)(exports.Functor));
+/**
+ * Maps the `Some` value of this `Option` to the void constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.asUnit = (0, Functor_1.asUnit)(exports.Functor);
+/**
+ * @category constructors
+ * @since 2.7.0
+ */
+exports.of = exports.some;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * @since 2.0.0
+ */
+var ap = function (fa) { return function (fab) {
+    return (0, exports.isNone)(fab) ? exports.none : (0, exports.isNone)(fa) ? exports.none : (0, exports.some)(fab.value(fa.value));
+}; };
+exports.ap = ap;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Apply = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Applicative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of
+};
+/**
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) { return ((0, exports.isNone)(ma) ? exports.none : f(ma.value)); });
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap
+};
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+var reduce = function (b, f) { return function (fa) {
+    return (0, exports.isNone)(fa) ? b : f(b, fa.value);
+}; };
+exports.reduce = reduce;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+var foldMap = function (M) { return function (f) { return function (fa) {
+    return (0, exports.isNone)(fa) ? M.empty : f(fa.value);
+}; }; };
+exports.foldMap = foldMap;
+/**
+ * @category folding
+ * @since 2.0.0
+ */
+var reduceRight = function (b, f) { return function (fa) {
+    return (0, exports.isNone)(fa) ? b : f(fa.value, b);
+}; };
+exports.reduceRight = reduceRight;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Foldable = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight
+};
+/**
+ * Returns the provided `Option` `that` if `self` is `None`, otherwise returns `self`.
+ *
+ * @param self - The first `Option` to be checked.
+ * @param that - The `Option` to return if `self` is `None`.
+ *
+ * @example
+ * import * as O from "fp-ts/Option"
+ *
+ * assert.deepStrictEqual(O.orElse(O.none, () => O.none), O.none)
+ * assert.deepStrictEqual(O.orElse(O.some(1), () => O.none), O.some(1))
+ * assert.deepStrictEqual(O.orElse(O.none, () => O.some('b')), O.some('b'))
+ * assert.deepStrictEqual(O.orElse(O.some(1), () => O.some('b')), O.some(1))
+ *
+ * @category error handling
+ * @since 2.16.0
+ */
+exports.orElse = (0, function_1.dual)(2, function (self, that) { return ((0, exports.isNone)(self) ? that() : self); });
+/**
+ * Alias of `orElse`.
+ *
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @category legacy
+ * @since 2.9.0
+ */
+exports.altW = exports.orElse;
+/**
+ * Alias of `orElse`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.alt = exports.orElse;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @since 2.7.0
+ */
+var zero = function () { return exports.none; };
+exports.zero = zero;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.Zero = {
+    URI: exports.URI,
+    zero: exports.zero
+};
+/**
+ * @category do notation
+ * @since 2.11.0
+ */
+exports.guard = (0, Zero_1.guard)(exports.Zero, exports.Pointed);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alternative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    alt: _alt,
+    zero: exports.zero
+};
+/**
+ * @since 2.0.0
+ */
+var extend = function (f) { return function (wa) {
+    return (0, exports.isNone)(wa) ? exports.none : (0, exports.some)(f(wa));
+}; };
+exports.extend = extend;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Extend = {
+    URI: exports.URI,
+    map: _map,
+    extend: _extend
+};
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+exports.compact = (0, exports.flatMap)(function_1.identity);
+var defaultSeparated = /*#__PURE__*/ (0, Separated_1.separated)(exports.none, exports.none);
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+var separate = function (ma) {
+    return (0, exports.isNone)(ma) ? defaultSeparated : (0, Separated_1.separated)((0, exports.getLeft)(ma.value), (0, exports.getRight)(ma.value));
+};
+exports.separate = separate;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Compactable = {
+    URI: exports.URI,
+    compact: exports.compact,
+    separate: exports.separate
+};
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+var filter = function (predicate) {
+    return function (fa) {
+        return (0, exports.isNone)(fa) ? exports.none : predicate(fa.value) ? fa : exports.none;
+    };
+};
+exports.filter = filter;
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+var filterMap = function (f) { return function (fa) {
+    return (0, exports.isNone)(fa) ? exports.none : f(fa.value);
+}; };
+exports.filterMap = filterMap;
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+var partition = function (predicate) {
+    return function (fa) {
+        return (0, Separated_1.separated)(_filter(fa, (0, Predicate_1.not)(predicate)), _filter(fa, predicate));
+    };
+};
+exports.partition = partition;
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+var partitionMap = function (f) { return (0, function_1.flow)((0, exports.map)(f), exports.separate); };
+exports.partitionMap = partitionMap;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Filterable = {
+    URI: exports.URI,
+    map: _map,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap
+};
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var traverse = function (F) {
+    return function (f) {
+        return function (ta) {
+            return (0, exports.isNone)(ta) ? F.of(exports.none) : F.map(f(ta.value), exports.some);
+        };
+    };
+};
+exports.traverse = traverse;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var sequence = function (F) {
+    return function (ta) {
+        return (0, exports.isNone)(ta) ? F.of(exports.none) : F.map(ta.value, exports.some);
+    };
+};
+exports.sequence = sequence;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Traversable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence
+};
+var _wither = /*#__PURE__*/ (0, Witherable_1.witherDefault)(exports.Traversable, exports.Compactable);
+var _wilt = /*#__PURE__*/ (0, Witherable_1.wiltDefault)(exports.Traversable, exports.Compactable);
+/**
+ * @category filtering
+ * @since 2.6.5
+ */
+var wither = function (F) {
+    var _witherF = _wither(F);
+    return function (f) { return function (fa) { return _witherF(fa, f); }; };
+};
+exports.wither = wither;
+/**
+ * @category filtering
+ * @since 2.6.5
+ */
+var wilt = function (F) {
+    var _wiltF = _wilt(F);
+    return function (f) { return function (fa) { return _wiltF(fa, f); }; };
+};
+exports.wilt = wilt;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Witherable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    wither: _wither,
+    wilt: _wilt
+};
+/**
+ * @since 2.7.0
+ */
+var throwError = function () { return exports.none; };
+exports.throwError = throwError;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.MonadThrow = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap,
+    throwError: exports.throwError
+};
+/**
+ * Transforms an `Either` to an `Option` discarding the error.
+ *
+ * Alias of [getRight](#getright)
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.fromEither = exports.getRight;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.FromEither = {
+    URI: exports.URI,
+    fromEither: exports.fromEither
+};
+// -------------------------------------------------------------------------------------
+// refinements
+// -------------------------------------------------------------------------------------
+/**
+ * Returns `true` if the option is an instance of `Some`, `false` otherwise.
+ *
+ * @example
+ * import { some, none, isSome } from 'fp-ts/Option'
+ *
+ * assert.strictEqual(isSome(some(1)), true)
+ * assert.strictEqual(isSome(none), false)
+ *
+ * @category refinements
+ * @since 2.0.0
+ */
+exports.isSome = _.isSome;
+/**
+ * Returns `true` if the option is `None`, `false` otherwise.
+ *
+ * @example
+ * import { some, none, isNone } from 'fp-ts/Option'
+ *
+ * assert.strictEqual(isNone(some(1)), false)
+ * assert.strictEqual(isNone(none), true)
+ *
+ * @category refinements
+ * @since 2.0.0
+ */
+var isNone = function (fa) { return fa._tag === 'None'; };
+exports.isNone = isNone;
+/**
+ * Less strict version of [`match`](#match).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return types will be merged.
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+var matchW = function (onNone, onSome) {
+    return function (ma) {
+        return (0, exports.isNone)(ma) ? onNone() : onSome(ma.value);
+    };
+};
+exports.matchW = matchW;
+/**
+ * Alias of [`matchW`](#matchw).
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.foldW = exports.matchW;
+/**
+ * Takes a (lazy) default value, a function, and an `Option` value, if the `Option` value is `None` the default value is
+ * returned, otherwise the function is applied to the value inside the `Some` and the result is returned.
+ *
+ * @example
+ * import { some, none, match } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     some(1),
+ *     match(() => 'a none', a => `a some containing ${a}`)
+ *   ),
+ *   'a some containing 1'
+ * )
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     none,
+ *     match(() => 'a none', a => `a some containing ${a}`)
+ *   ),
+ *   'a none'
+ * )
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.match = exports.matchW;
+/**
+ * Alias of [`match`](#match).
+ *
+ * @category pattern matching
+ * @since 2.0.0
+ */
+exports.fold = exports.match;
+/**
+ * Less strict version of [`getOrElse`](#getorelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return type will be merged.
+ *
+ * @category error handling
+ * @since 2.6.0
+ */
+var getOrElseW = function (onNone) {
+    return function (ma) {
+        return (0, exports.isNone)(ma) ? onNone() : ma.value;
+    };
+};
+exports.getOrElseW = getOrElseW;
+/**
+ * Extracts the value out of the structure, if it exists. Otherwise returns the given default value
+ *
+ * @example
+ * import { some, none, getOrElse } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     some(1),
+ *     getOrElse(() => 0)
+ *   ),
+ *   1
+ * )
+ * assert.strictEqual(
+ *   pipe(
+ *     none,
+ *     getOrElse(() => 0)
+ *   ),
+ *   0
+ * )
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.getOrElse = exports.getOrElseW;
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.0.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.Apply);
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.0.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.Apply);
+/**
+ * @category sequencing
+ * @since 2.0.0
+ */
+exports.flatten = exports.compact;
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @category combinators
+ * @since 2.15.0
+ */
+exports.tap = (0, function_1.dual)(2, chainable.tap(exports.Chain));
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as O from 'fp-ts/Option'
+ * import * as E from 'fp-ts/Either'
+ *
+ * const compute = (value: number) => pipe(
+ *   O.of(value),
+ *   O.tapEither((value) => value > 0 ? E.right('ok') : E.left('error')),
+ * )
+ *
+ * assert.deepStrictEqual(compute(1), O.of(1))
+ * assert.deepStrictEqual(compute(-42), O.none)
+ *
+ * @category combinators
+ * @since 2.16.0
+ */
+exports.tapEither = (0, function_1.dual)(2, (0, FromEither_1.tapEither)(exports.FromEither, exports.Chain));
+/**
+ * @since 2.0.0
+ */
+exports.duplicate = (0, exports.extend)(function_1.identity);
+/**
+ * @category lifting
+ * @since 2.11.0
+ */
+exports.fromEitherK = (0, FromEither_1.fromEitherK)(exports.FromEither);
+/**
+ * @category sequencing
+ * @since 2.11.0
+ */
+exports.chainEitherK = 
+/*#__PURE__*/ (0, FromEither_1.chainEitherK)(exports.FromEither, exports.Chain);
+/**
+ * Alias of `tapEither`.
+ *
+ * @category legacy
+ * @since 2.12.0
+ */
+exports.chainFirstEitherK = exports.tapEither;
+/**
+ * Constructs a new `Option` from a nullable type. If the value is `null` or `undefined`, returns `None`, otherwise
+ * returns the value wrapped in a `Some`.
+ *
+ * @example
+ * import { none, some, fromNullable } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(fromNullable(undefined), none)
+ * assert.deepStrictEqual(fromNullable(null), none)
+ * assert.deepStrictEqual(fromNullable(1), some(1))
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+var fromNullable = function (a) { return (a == null ? exports.none : (0, exports.some)(a)); };
+exports.fromNullable = fromNullable;
+/**
+ * Transforms an exception into an `Option`. If `f` throws, returns `None`, otherwise returns the output wrapped in a
+ * `Some`.
+ *
+ * See also [`tryCatchK`](#trycatchk).
+ *
+ * @example
+ * import { none, some, tryCatch } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(
+ *   tryCatch(() => {
+ *     throw new Error()
+ *   }),
+ *   none
+ * )
+ * assert.deepStrictEqual(tryCatch(() => 1), some(1))
+ *
+ * @category interop
+ * @since 2.0.0
+ */
+var tryCatch = function (f) {
+    try {
+        return (0, exports.some)(f());
+    }
+    catch (e) {
+        return exports.none;
+    }
+};
+exports.tryCatch = tryCatch;
+/**
+ * Converts a function that may throw to one returning a `Option`.
+ *
+ * @category interop
+ * @since 2.10.0
+ */
+var tryCatchK = function (f) {
+    return function () {
+        var a = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            a[_i] = arguments[_i];
+        }
+        return (0, exports.tryCatch)(function () { return f.apply(void 0, a); });
+    };
+};
+exports.tryCatchK = tryCatchK;
+/**
+ * Returns a *smart constructor* from a function that returns a nullable value.
+ *
+ * @example
+ * import { fromNullableK, none, some } from 'fp-ts/Option'
+ *
+ * const f = (s: string): number | undefined => {
+ *   const n = parseFloat(s)
+ *   return isNaN(n) ? undefined : n
+ * }
+ *
+ * const g = fromNullableK(f)
+ *
+ * assert.deepStrictEqual(g('1'), some(1))
+ * assert.deepStrictEqual(g('a'), none)
+ *
+ * @category lifting
+ * @since 2.9.0
+ */
+var fromNullableK = function (f) { return (0, function_1.flow)(f, exports.fromNullable); };
+exports.fromNullableK = fromNullableK;
+/**
+ * This is `chain` + `fromNullable`, useful when working with optional values.
+ *
+ * @example
+ * import { some, none, fromNullable, chainNullableK } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * interface Employee {
+ *   readonly company?: {
+ *     readonly address?: {
+ *       readonly street?: {
+ *         readonly name?: string
+ *       }
+ *     }
+ *   }
+ * }
+ *
+ * const employee1: Employee = { company: { address: { street: { name: 'high street' } } } }
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     fromNullable(employee1.company),
+ *     chainNullableK(company => company.address),
+ *     chainNullableK(address => address.street),
+ *     chainNullableK(street => street.name)
+ *   ),
+ *   some('high street')
+ * )
+ *
+ * const employee2: Employee = { company: { address: { street: {} } } }
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     fromNullable(employee2.company),
+ *     chainNullableK(company => company.address),
+ *     chainNullableK(address => address.street),
+ *     chainNullableK(street => street.name)
+ *   ),
+ *   none
+ * )
+ *
+ * @category sequencing
+ * @since 2.9.0
+ */
+var chainNullableK = function (f) {
+    return function (ma) {
+        return (0, exports.isNone)(ma) ? exports.none : (0, exports.fromNullable)(f(ma.value));
+    };
+};
+exports.chainNullableK = chainNullableK;
+/**
+ * Extracts the value out of the structure, if it exists. Otherwise returns `null`.
+ *
+ * @example
+ * import { some, none, toNullable } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     some(1),
+ *     toNullable
+ *   ),
+ *   1
+ * )
+ * assert.strictEqual(
+ *   pipe(
+ *     none,
+ *     toNullable
+ *   ),
+ *   null
+ * )
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.toNullable = (0, exports.match)(function_1.constNull, function_1.identity);
+/**
+ * Extracts the value out of the structure, if it exists. Otherwise returns `undefined`.
+ *
+ * @example
+ * import { some, none, toUndefined } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     some(1),
+ *     toUndefined
+ *   ),
+ *   1
+ * )
+ * assert.strictEqual(
+ *   pipe(
+ *     none,
+ *     toUndefined
+ *   ),
+ *   undefined
+ * )
+ *
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.toUndefined = (0, exports.match)(function_1.constUndefined, function_1.identity);
+function elem(E) {
+    return function (a, ma) {
+        if (ma === undefined) {
+            var elemE_1 = elem(E);
+            return function (ma) { return elemE_1(a, ma); };
+        }
+        return (0, exports.isNone)(ma) ? false : E.equals(a, ma.value);
+    };
+}
+exports.elem = elem;
+/**
+ * Returns `true` if the predicate is satisfied by the wrapped value
+ *
+ * @example
+ * import { some, none, exists } from 'fp-ts/Option'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.strictEqual(
+ *   pipe(
+ *     some(1),
+ *     exists(n => n > 0)
+ *   ),
+ *   true
+ * )
+ * assert.strictEqual(
+ *   pipe(
+ *     some(1),
+ *     exists(n => n > 1)
+ *   ),
+ *   false
+ * )
+ * assert.strictEqual(
+ *   pipe(
+ *     none,
+ *     exists(n => n > 0)
+ *   ),
+ *   false
+ * )
+ *
+ * @since 2.0.0
+ */
+var exists = function (predicate) {
+    return function (ma) {
+        return (0, exports.isNone)(ma) ? false : predicate(ma.value);
+    };
+};
+exports.exists = exists;
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = chainable.bind(exports.Chain);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.Apply);
+/**
+ * @since 2.11.0
+ */
+exports.ApT = (0, exports.of)(_.emptyReadonlyArray);
+// -------------------------------------------------------------------------------------
+// array utils
+// -------------------------------------------------------------------------------------
+/**
+ * Equivalent to `ReadonlyNonEmptyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyNonEmptyArrayWithIndex = function (f) {
+    return function (as) {
+        var o = f(0, _.head(as));
+        if ((0, exports.isNone)(o)) {
+            return exports.none;
+        }
+        var out = [o.value];
+        for (var i = 1; i < as.length; i++) {
+            var o_1 = f(i, as[i]);
+            if ((0, exports.isNone)(o_1)) {
+                return exports.none;
+            }
+            out.push(o_1.value);
+        }
+        return (0, exports.some)(out);
+    };
+};
+exports.traverseReadonlyNonEmptyArrayWithIndex = traverseReadonlyNonEmptyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyArrayWithIndex = function (f) {
+    var g = (0, exports.traverseReadonlyNonEmptyArrayWithIndex)(f);
+    return function (as) { return (_.isNonEmpty(as) ? g(as) : exports.ApT); };
+};
+exports.traverseReadonlyArrayWithIndex = traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverse(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+var traverseArray = function (f) {
+    return (0, exports.traverseReadonlyArrayWithIndex)(function (_, a) { return f(a); });
+};
+exports.traverseArray = traverseArray;
+/**
+ * Equivalent to `ReadonlyArray#sequence(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.sequenceArray = 
+/*#__PURE__*/ (0, exports.traverseArray)(function_1.identity);
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chain = exports.flatMap;
+/**
+ * Alias of `tap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chainFirst = exports.tap;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * Use `Refinement` module instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+function getRefinement(getOption) {
+    return function (a) { return (0, exports.isSome)(getOption(a)); };
+}
+exports.getRefinement = getRefinement;
+/**
+ * Use [`chainNullableK`](#chainnullablek) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.mapNullable = exports.chainNullableK;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `O.Functor` instead of `O.option`
+ * (where `O` is from `import O from 'fp-ts/Option'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.option = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _ap,
+    chain: exports.flatMap,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    zero: exports.zero,
+    alt: _alt,
+    extend: _extend,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    wither: _wither,
+    wilt: _wilt,
+    throwError: exports.throwError
+};
+/**
+ * Use [`getApplySemigroup`](./Apply.ts.html#getapplysemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getApplySemigroup = (0, Apply_1.getApplySemigroup)(exports.Apply);
+/**
+ * Use [`getApplicativeMonoid`](./Applicative.ts.html#getapplicativemonoid) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getApplyMonoid = (0, Applicative_1.getApplicativeMonoid)(exports.Applicative);
+/**
+ * Use
+ *
+ * ```ts
+ * import { first } from 'fp-ts/Semigroup'
+ * import { getMonoid } from 'fp-ts/Option'
+ *
+ * getMonoid(first())
+ * ```
+ *
+ * instead.
+ *
+ * Monoid returning the left-most non-`None` value
+ *
+ * | x       | y       | concat(x, y) |
+ * | ------- | ------- | ------------ |
+ * | none    | none    | none         |
+ * | some(a) | none    | some(a)      |
+ * | none    | some(b) | some(b)      |
+ * | some(a) | some(b) | some(a)      |
+ *
+ * @example
+ * import { getFirstMonoid, some, none } from 'fp-ts/Option'
+ *
+ * const M = getFirstMonoid<number>()
+ * assert.deepStrictEqual(M.concat(none, none), none)
+ * assert.deepStrictEqual(M.concat(some(1), none), some(1))
+ * assert.deepStrictEqual(M.concat(none, some(2)), some(2))
+ * assert.deepStrictEqual(M.concat(some(1), some(2)), some(1))
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var getFirstMonoid = function () { return (0, exports.getMonoid)((0, Semigroup_1.first)()); };
+exports.getFirstMonoid = getFirstMonoid;
+/**
+ * Use
+ *
+ * ```ts
+ * import { last } from 'fp-ts/Semigroup'
+ * import { getMonoid } from 'fp-ts/Option'
+ *
+ * getMonoid(last())
+ * ```
+ *
+ * instead.
+ *
+ * Monoid returning the right-most non-`None` value
+ *
+ * | x       | y       | concat(x, y) |
+ * | ------- | ------- | ------------ |
+ * | none    | none    | none         |
+ * | some(a) | none    | some(a)      |
+ * | none    | some(b) | some(b)      |
+ * | some(a) | some(b) | some(b)      |
+ *
+ * @example
+ * import { getLastMonoid, some, none } from 'fp-ts/Option'
+ *
+ * const M = getLastMonoid<number>()
+ * assert.deepStrictEqual(M.concat(none, none), none)
+ * assert.deepStrictEqual(M.concat(some(1), none), some(1))
+ * assert.deepStrictEqual(M.concat(none, some(2)), some(2))
+ * assert.deepStrictEqual(M.concat(some(1), some(2)), some(2))
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var getLastMonoid = function () { return (0, exports.getMonoid)((0, Semigroup_1.last)()); };
+exports.getLastMonoid = getLastMonoid;
+
+
+/***/ }),
+
+/***/ 6685:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ordDate = exports.ordNumber = exports.ordString = exports.ordBoolean = exports.ord = exports.getDualOrd = exports.getTupleOrd = exports.between = exports.clamp = exports.max = exports.min = exports.geq = exports.leq = exports.gt = exports.lt = exports.equals = exports.trivial = exports.Contravariant = exports.getMonoid = exports.getSemigroup = exports.URI = exports.contramap = exports.reverse = exports.tuple = exports.fromCompare = exports.equalsDefault = void 0;
+var Eq_1 = __nccwpck_require__(6964);
+var function_1 = __nccwpck_require__(6985);
+// -------------------------------------------------------------------------------------
+// defaults
+// -------------------------------------------------------------------------------------
+/**
+ * @category defaults
+ * @since 2.10.0
+ */
+var equalsDefault = function (compare) {
+    return function (first, second) {
+        return first === second || compare(first, second) === 0;
+    };
+};
+exports.equalsDefault = equalsDefault;
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+var fromCompare = function (compare) { return ({
+    equals: (0, exports.equalsDefault)(compare),
+    compare: function (first, second) { return (first === second ? 0 : compare(first, second)); }
+}); };
+exports.fromCompare = fromCompare;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * Given a tuple of `Ord`s returns an `Ord` for the tuple.
+ *
+ * @example
+ * import { tuple } from 'fp-ts/Ord'
+ * import * as B from 'fp-ts/boolean'
+ * import * as S from 'fp-ts/string'
+ * import * as N from 'fp-ts/number'
+ *
+ * const O = tuple(S.Ord, N.Ord, B.Ord)
+ * assert.strictEqual(O.compare(['a', 1, true], ['b', 2, true]), -1)
+ * assert.strictEqual(O.compare(['a', 1, true], ['a', 2, true]), -1)
+ * assert.strictEqual(O.compare(['a', 1, true], ['a', 1, false]), 1)
+ *
+ * @since 2.10.0
+ */
+var tuple = function () {
+    var ords = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        ords[_i] = arguments[_i];
+    }
+    return (0, exports.fromCompare)(function (first, second) {
+        var i = 0;
+        for (; i < ords.length - 1; i++) {
+            var r = ords[i].compare(first[i], second[i]);
+            if (r !== 0) {
+                return r;
+            }
+        }
+        return ords[i].compare(first[i], second[i]);
+    });
+};
+exports.tuple = tuple;
+/**
+ * @since 2.10.0
+ */
+var reverse = function (O) { return (0, exports.fromCompare)(function (first, second) { return O.compare(second, first); }); };
+exports.reverse = reverse;
+/* istanbul ignore next */
+var contramap_ = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.contramap)(f)); };
+/**
+ * A typical use case for `contramap` would be like, given some `User` type, to construct an `Ord<User>`.
+ *
+ * We can do so with a function from `User -> X` where `X` is some value that we know how to compare
+ * for ordering (meaning we have an `Ord<X>`)
+ *
+ * For example, given the following `User` type, there are lots of possible choices for `X`,
+ * but let's say we want to sort a list of users by `lastName`.
+ *
+ * If we have a way of comparing `lastName`s for ordering (`ordLastName: Ord<string>`) and we know how to go from `User -> string`,
+ * using `contramap` we can do this
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import { contramap, Ord } from 'fp-ts/Ord'
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import * as S from 'fp-ts/string'
+ *
+ * interface User {
+ *   readonly firstName: string
+ *   readonly lastName: string
+ * }
+ *
+ * const ordLastName: Ord<string> = S.Ord
+ *
+ * const ordByLastName: Ord<User> = pipe(
+ *   ordLastName,
+ *   contramap((user) => user.lastName)
+ * )
+ *
+ * assert.deepStrictEqual(
+ *   RA.sort(ordByLastName)([
+ *     { firstName: 'a', lastName: 'd' },
+ *     { firstName: 'c', lastName: 'b' }
+ *   ]),
+ *   [
+ *     { firstName: 'c', lastName: 'b' },
+ *     { firstName: 'a', lastName: 'd' }
+ *   ]
+ * )
+ *
+ * @since 2.0.0
+ */
+var contramap = function (f) { return function (fa) {
+    return (0, exports.fromCompare)(function (first, second) { return fa.compare(f(first), f(second)); });
+}; };
+exports.contramap = contramap;
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'Ord';
+/**
+ * A typical use case for the `Semigroup` instance of `Ord` is merging two or more orderings.
+ *
+ * For example the following snippet builds an `Ord` for a type `User` which
+ * sorts by `created` date descending, and **then** `lastName`
+ *
+ * @example
+ * import * as D from 'fp-ts/Date'
+ * import { pipe } from 'fp-ts/function'
+ * import { contramap, getSemigroup, Ord, reverse } from 'fp-ts/Ord'
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import * as S from 'fp-ts/string'
+ *
+ * interface User {
+ *   readonly id: string
+ *   readonly lastName: string
+ *   readonly created: Date
+ * }
+ *
+ * const ordByLastName: Ord<User> = pipe(
+ *   S.Ord,
+ *   contramap((user) => user.lastName)
+ * )
+ *
+ * const ordByCreated: Ord<User> = pipe(
+ *   D.Ord,
+ *   contramap((user) => user.created)
+ * )
+ *
+ * const ordUserByCreatedDescThenLastName = getSemigroup<User>().concat(
+ *   reverse(ordByCreated),
+ *   ordByLastName
+ * )
+ *
+ * assert.deepStrictEqual(
+ *   RA.sort(ordUserByCreatedDescThenLastName)([
+ *     { id: 'c', lastName: 'd', created: new Date(1973, 10, 30) },
+ *     { id: 'a', lastName: 'b', created: new Date(1973, 10, 30) },
+ *     { id: 'e', lastName: 'f', created: new Date(1980, 10, 30) }
+ *   ]),
+ *   [
+ *     { id: 'e', lastName: 'f', created: new Date(1980, 10, 30) },
+ *     { id: 'a', lastName: 'b', created: new Date(1973, 10, 30) },
+ *     { id: 'c', lastName: 'd', created: new Date(1973, 10, 30) }
+ *   ]
+ * )
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+var getSemigroup = function () { return ({
+    concat: function (first, second) {
+        return (0, exports.fromCompare)(function (a, b) {
+            var ox = first.compare(a, b);
+            return ox !== 0 ? ox : second.compare(a, b);
+        });
+    }
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * Returns a `Monoid` such that:
+ *
+ * - its `concat(ord1, ord2)` operation will order first by `ord1`, and then by `ord2`
+ * - its `empty` value is an `Ord` that always considers compared elements equal
+ *
+ * @example
+ * import { sort } from 'fp-ts/Array'
+ * import { contramap, reverse, getMonoid } from 'fp-ts/Ord'
+ * import * as S from 'fp-ts/string'
+ * import * as B from 'fp-ts/boolean'
+ * import { pipe } from 'fp-ts/function'
+ * import { concatAll } from 'fp-ts/Monoid'
+ * import * as N from 'fp-ts/number'
+ *
+ * interface User {
+ *   readonly id: number
+ *   readonly name: string
+ *   readonly age: number
+ *   readonly rememberMe: boolean
+ * }
+ *
+ * const byName = pipe(
+ *   S.Ord,
+ *   contramap((p: User) => p.name)
+ * )
+ *
+ * const byAge = pipe(
+ *   N.Ord,
+ *   contramap((p: User) => p.age)
+ * )
+ *
+ * const byRememberMe = pipe(
+ *   B.Ord,
+ *   contramap((p: User) => p.rememberMe)
+ * )
+ *
+ * const M = getMonoid<User>()
+ *
+ * const users: Array<User> = [
+ *   { id: 1, name: 'Guido', age: 47, rememberMe: false },
+ *   { id: 2, name: 'Guido', age: 46, rememberMe: true },
+ *   { id: 3, name: 'Giulio', age: 44, rememberMe: false },
+ *   { id: 4, name: 'Giulio', age: 44, rememberMe: true }
+ * ]
+ *
+ * // sort by name, then by age, then by `rememberMe`
+ * const O1 = concatAll(M)([byName, byAge, byRememberMe])
+ * assert.deepStrictEqual(sort(O1)(users), [
+ *   { id: 3, name: 'Giulio', age: 44, rememberMe: false },
+ *   { id: 4, name: 'Giulio', age: 44, rememberMe: true },
+ *   { id: 2, name: 'Guido', age: 46, rememberMe: true },
+ *   { id: 1, name: 'Guido', age: 47, rememberMe: false }
+ * ])
+ *
+ * // now `rememberMe = true` first, then by name, then by age
+ * const O2 = concatAll(M)([reverse(byRememberMe), byName, byAge])
+ * assert.deepStrictEqual(sort(O2)(users), [
+ *   { id: 4, name: 'Giulio', age: 44, rememberMe: true },
+ *   { id: 2, name: 'Guido', age: 46, rememberMe: true },
+ *   { id: 3, name: 'Giulio', age: 44, rememberMe: false },
+ *   { id: 1, name: 'Guido', age: 47, rememberMe: false }
+ * ])
+ *
+ * @category instances
+ * @since 2.4.0
+ */
+var getMonoid = function () { return ({
+    concat: (0, exports.getSemigroup)().concat,
+    empty: (0, exports.fromCompare)(function () { return 0; })
+}); };
+exports.getMonoid = getMonoid;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Contravariant = {
+    URI: exports.URI,
+    contramap: contramap_
+};
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.11.0
+ */
+exports.trivial = {
+    equals: function_1.constTrue,
+    compare: /*#__PURE__*/ (0, function_1.constant)(0)
+};
+/**
+ * @since 2.11.0
+ */
+var equals = function (O) {
+    return function (second) {
+        return function (first) {
+            return first === second || O.compare(first, second) === 0;
+        };
+    };
+};
+exports.equals = equals;
+// TODO: curry in v3
+/**
+ * Test whether one value is _strictly less than_ another
+ *
+ * @since 2.0.0
+ */
+var lt = function (O) {
+    return function (first, second) {
+        return O.compare(first, second) === -1;
+    };
+};
+exports.lt = lt;
+// TODO: curry in v3
+/**
+ * Test whether one value is _strictly greater than_ another
+ *
+ * @since 2.0.0
+ */
+var gt = function (O) {
+    return function (first, second) {
+        return O.compare(first, second) === 1;
+    };
+};
+exports.gt = gt;
+// TODO: curry in v3
+/**
+ * Test whether one value is _non-strictly less than_ another
+ *
+ * @since 2.0.0
+ */
+var leq = function (O) {
+    return function (first, second) {
+        return O.compare(first, second) !== 1;
+    };
+};
+exports.leq = leq;
+// TODO: curry in v3
+/**
+ * Test whether one value is _non-strictly greater than_ another
+ *
+ * @since 2.0.0
+ */
+var geq = function (O) {
+    return function (first, second) {
+        return O.compare(first, second) !== -1;
+    };
+};
+exports.geq = geq;
+// TODO: curry in v3
+/**
+ * Take the minimum of two values. If they are considered equal, the first argument is chosen
+ *
+ * @since 2.0.0
+ */
+var min = function (O) {
+    return function (first, second) {
+        return first === second || O.compare(first, second) < 1 ? first : second;
+    };
+};
+exports.min = min;
+// TODO: curry in v3
+/**
+ * Take the maximum of two values. If they are considered equal, the first argument is chosen
+ *
+ * @since 2.0.0
+ */
+var max = function (O) {
+    return function (first, second) {
+        return first === second || O.compare(first, second) > -1 ? first : second;
+    };
+};
+exports.max = max;
+/**
+ * Clamp a value between a minimum and a maximum
+ *
+ * @since 2.0.0
+ */
+var clamp = function (O) {
+    var minO = (0, exports.min)(O);
+    var maxO = (0, exports.max)(O);
+    return function (low, hi) { return function (a) { return maxO(minO(a, hi), low); }; };
+};
+exports.clamp = clamp;
+/**
+ * Test whether a value is between a minimum and a maximum (inclusive)
+ *
+ * @since 2.0.0
+ */
+var between = function (O) {
+    var ltO = (0, exports.lt)(O);
+    var gtO = (0, exports.gt)(O);
+    return function (low, hi) { return function (a) { return ltO(a, low) || gtO(a, hi) ? false : true; }; };
+};
+exports.between = between;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * Use [`tuple`](#tuple) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getTupleOrd = exports.tuple;
+/**
+ * Use [`reverse`](#reverse) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getDualOrd = exports.reverse;
+/**
+ * Use [`Contravariant`](#contravariant) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.ord = exports.Contravariant;
+// default compare for primitive types
+function compare(first, second) {
+    return first < second ? -1 : first > second ? 1 : 0;
+}
+var strictOrd = {
+    equals: Eq_1.eqStrict.equals,
+    compare: compare
+};
+/**
+ * Use [`Ord`](./boolean.ts.html#ord) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.ordBoolean = strictOrd;
+/**
+ * Use [`Ord`](./string.ts.html#ord) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.ordString = strictOrd;
+/**
+ * Use [`Ord`](./number.ts.html#ord) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.ordNumber = strictOrd;
+/**
+ * Use [`Ord`](./Date.ts.html#ord) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.ordDate = (0, function_1.pipe)(exports.ordNumber, 
+/*#__PURE__*/
+(0, exports.contramap)(function (date) { return date.valueOf(); }));
+
+
+/***/ }),
+
+/***/ 6382:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.and = exports.or = exports.not = exports.Contravariant = exports.getMonoidAll = exports.getSemigroupAll = exports.getMonoidAny = exports.getSemigroupAny = exports.URI = exports.contramap = void 0;
+var function_1 = __nccwpck_require__(6985);
+var contramap_ = function (predicate, f) { return (0, function_1.pipe)(predicate, (0, exports.contramap)(f)); };
+/**
+ * @since 2.11.0
+ */
+var contramap = function (f) {
+    return function (predicate) {
+        return (0, function_1.flow)(f, predicate);
+    };
+};
+exports.contramap = contramap;
+/**
+ * @category type lambdas
+ * @since 2.11.0
+ */
+exports.URI = 'Predicate';
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getSemigroupAny = function () { return ({
+    concat: function (first, second) { return (0, function_1.pipe)(first, (0, exports.or)(second)); }
+}); };
+exports.getSemigroupAny = getSemigroupAny;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getMonoidAny = function () { return ({
+    concat: (0, exports.getSemigroupAny)().concat,
+    empty: function_1.constFalse
+}); };
+exports.getMonoidAny = getMonoidAny;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getSemigroupAll = function () { return ({
+    concat: function (first, second) { return (0, function_1.pipe)(first, (0, exports.and)(second)); }
+}); };
+exports.getSemigroupAll = getSemigroupAll;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getMonoidAll = function () { return ({
+    concat: (0, exports.getSemigroupAll)().concat,
+    empty: function_1.constTrue
+}); };
+exports.getMonoidAll = getMonoidAll;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.Contravariant = {
+    URI: exports.URI,
+    contramap: contramap_
+};
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.11.0
+ */
+var not = function (predicate) {
+    return function (a) {
+        return !predicate(a);
+    };
+};
+exports.not = not;
+/**
+ * @since 2.11.0
+ */
+var or = function (second) {
+    return function (first) {
+        return function (a) {
+            return first(a) || second(a);
+        };
+    };
+};
+exports.or = or;
+/**
+ * @since 2.11.0
+ */
+var and = function (second) {
+    return function (first) {
+        return function (a) {
+            return first(a) && second(a);
+        };
+    };
+};
+exports.and = and;
+
+
+/***/ }),
+
+/***/ 4234:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sort = exports.lefts = exports.rights = exports.reverse = exports.modifyAt = exports.deleteAt = exports.updateAt = exports.insertAt = exports.findLastIndex = exports.findLastMap = exports.findLast = exports.findFirstMap = exports.findFirst = exports.findIndex = exports.dropLeftWhile = exports.dropRight = exports.dropLeft = exports.spanLeft = exports.takeLeftWhile = exports.takeRight = exports.takeLeft = exports.init = exports.tail = exports.last = exports.head = exports.lookup = exports.isOutOfBound = exports.size = exports.scanRight = exports.scanLeft = exports.chainWithIndex = exports.foldRight = exports.matchRight = exports.matchRightW = exports.foldLeft = exports.matchLeft = exports.matchLeftW = exports.match = exports.matchW = exports.fromEither = exports.fromOption = exports.fromPredicate = exports.replicate = exports.makeBy = exports.appendW = exports.append = exports.prependW = exports.prepend = exports.isNonEmpty = exports.isEmpty = void 0;
+exports.sequence = exports.traverse = exports.reduceRightWithIndex = exports.reduceRight = exports.reduceWithIndex = exports.foldMap = exports.reduce = exports.foldMapWithIndex = exports.duplicate = exports.extend = exports.filterWithIndex = exports.partitionMapWithIndex = exports.partitionMap = exports.partitionWithIndex = exports.partition = exports.compact = exports.filterMap = exports.filterMapWithIndex = exports.filter = exports.separate = exports.mapWithIndex = exports.map = exports.flatten = exports.flatMap = exports.ap = exports.alt = exports.altW = exports.zero = exports.of = exports._chainRecBreadthFirst = exports._chainRecDepthFirst = exports.difference = exports.intersection = exports.union = exports.concat = exports.concatW = exports.comprehension = exports.fromOptionK = exports.chunksOf = exports.splitAt = exports.chop = exports.sortBy = exports.uniq = exports.elem = exports.rotate = exports.intersperse = exports.prependAll = exports.unzip = exports.zip = exports.zipWith = void 0;
+exports.toArray = exports.unsafeDeleteAt = exports.unsafeUpdateAt = exports.unsafeInsertAt = exports.fromEitherK = exports.FromEither = exports.filterE = exports.Witherable = exports.ChainRecBreadthFirst = exports.chainRecBreadthFirst = exports.ChainRecDepthFirst = exports.chainRecDepthFirst = exports.TraversableWithIndex = exports.Traversable = exports.FoldableWithIndex = exports.Foldable = exports.FilterableWithIndex = exports.Filterable = exports.Compactable = exports.Extend = exports.Alternative = exports.guard = exports.Zero = exports.Alt = exports.Unfoldable = exports.chainFirst = exports.Monad = exports.Chain = exports.Applicative = exports.apSecond = exports.apFirst = exports.Apply = exports.FunctorWithIndex = exports.Pointed = exports.flap = exports.Functor = exports.getDifferenceMagma = exports.getIntersectionSemigroup = exports.getUnionMonoid = exports.getUnionSemigroup = exports.getOrd = exports.getEq = exports.getMonoid = exports.getSemigroup = exports.getShow = exports.URI = exports.unfold = exports.wilt = exports.wither = exports.traverseWithIndex = void 0;
+exports.readonlyArray = exports.prependToAll = exports.snoc = exports.cons = exports.range = exports.chain = exports.apS = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.intercalate = exports.exists = exports.some = exports.every = exports.empty = exports.fromArray = void 0;
+var Apply_1 = __nccwpck_require__(205);
+var Chain_1 = __nccwpck_require__(2372);
+var Eq_1 = __nccwpck_require__(6964);
+var FromEither_1 = __nccwpck_require__(1964);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var N = __importStar(__nccwpck_require__(52));
+var Ord_1 = __nccwpck_require__(6685);
+var RNEA = __importStar(__nccwpck_require__(8630));
+var Separated_1 = __nccwpck_require__(5877);
+var Witherable_1 = __nccwpck_require__(4384);
+var Zero_1 = __nccwpck_require__(9734);
+// -------------------------------------------------------------------------------------
+// refinements
+// -------------------------------------------------------------------------------------
+/**
+ * Test whether a `ReadonlyArray` is empty.
+ *
+ * @example
+ * import { isEmpty } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.strictEqual(isEmpty([]), true)
+ *
+ * @category refinements
+ * @since 2.5.0
+ */
+var isEmpty = function (as) { return as.length === 0; };
+exports.isEmpty = isEmpty;
+/**
+ * Test whether a `ReadonlyArray` is non empty.
+ *
+ * @category refinements
+ * @since 2.5.0
+ */
+exports.isNonEmpty = RNEA.isNonEmpty;
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * Prepend an element to the front of a `ReadonlyArray`, creating a new `ReadonlyNonEmptyArray`.
+ *
+ * @example
+ * import { prepend } from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([2, 3, 4], prepend(1)), [1, 2, 3, 4])
+ *
+ * @since 2.10.0
+ */
+exports.prepend = RNEA.prepend;
+/**
+ * Less strict version of [`prepend`](#prepend).
+ *
+ * @since 2.11.0
+ */
+exports.prependW = RNEA.prependW;
+/**
+ * Append an element to the end of a `ReadonlyArray`, creating a new `ReadonlyNonEmptyArray`.
+ *
+ * @example
+ * import { append } from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe([1, 2, 3], append(4)), [1, 2, 3, 4])
+ *
+ * @since 2.10.0
+ */
+exports.append = RNEA.append;
+/**
+ * Less strict version of [`append`](#append).
+ *
+ * @since 2.11.0
+ */
+exports.appendW = RNEA.appendW;
+/**
+ * Return a `ReadonlyArray` of length `n` with element `i` initialized with `f(i)`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { makeBy } from 'fp-ts/ReadonlyArray'
+ *
+ * const double = (n: number): number => n * 2
+ * assert.deepStrictEqual(makeBy(5, double), [0, 2, 4, 6, 8])
+ *
+ * @category constructors
+ * @since 2.5.0
+ */
+var makeBy = function (n, f) { return (n <= 0 ? exports.empty : RNEA.makeBy(f)(n)); };
+exports.makeBy = makeBy;
+/**
+ * Create a `ReadonlyArray` containing a value repeated the specified number of times.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import { replicate } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(replicate(3, 'a'), ['a', 'a', 'a'])
+ *
+ * @category constructors
+ * @since 2.5.0
+ */
+var replicate = function (n, a) { return (0, exports.makeBy)(n, function () { return a; }); };
+exports.replicate = replicate;
+function fromPredicate(predicate) {
+    return function (a) { return (predicate(a) ? [a] : exports.empty); };
+}
+exports.fromPredicate = fromPredicate;
+// -------------------------------------------------------------------------------------
+// conversions
+// -------------------------------------------------------------------------------------
+/**
+ * @category conversions
+ * @since 2.11.0
+ */
+var fromOption = function (ma) { return (_.isNone(ma) ? exports.empty : [ma.value]); };
+exports.fromOption = fromOption;
+/**
+ * Transforms an `Either` to a `ReadonlyArray`.
+ *
+ * @category conversions
+ * @since 2.11.0
+ */
+var fromEither = function (e) { return (_.isLeft(e) ? exports.empty : [e.right]); };
+exports.fromEither = fromEither;
+/**
+ * Less strict version of [`match`](#match).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return types will be merged.
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchW = function (onEmpty, onNonEmpty) {
+    return function (as) {
+        return (0, exports.isNonEmpty)(as) ? onNonEmpty(as) : onEmpty();
+    };
+};
+exports.matchW = matchW;
+/**
+ * @category pattern matching
+ * @since 2.11.0
+ */
+exports.match = exports.matchW;
+/**
+ * Less strict version of [`matchLeft`](#matchleft).
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchLeftW = function (onEmpty, onNonEmpty) {
+    return function (as) {
+        return (0, exports.isNonEmpty)(as) ? onNonEmpty(RNEA.head(as), RNEA.tail(as)) : onEmpty();
+    };
+};
+exports.matchLeftW = matchLeftW;
+/**
+ * Break a `ReadonlyArray` into its first element and remaining elements.
+ *
+ * @example
+ * import { matchLeft } from 'fp-ts/ReadonlyArray'
+ *
+ * const len: <A>(as: ReadonlyArray<A>) => number = matchLeft(() => 0, (_, tail) => 1 + len(tail))
+ * assert.strictEqual(len([1, 2, 3]), 3)
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchLeft = exports.matchLeftW;
+/**
+ * Alias of [`matchLeft`](#matchleft).
+ *
+ * @category pattern matching
+ * @since 2.5.0
+ */
+exports.foldLeft = exports.matchLeft;
+/**
+ * Less strict version of [`matchRight`](#matchright).
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchRightW = function (onEmpty, onNonEmpty) {
+    return function (as) {
+        return (0, exports.isNonEmpty)(as) ? onNonEmpty(RNEA.init(as), RNEA.last(as)) : onEmpty();
+    };
+};
+exports.matchRightW = matchRightW;
+/**
+ * Break a `ReadonlyArray` into its initial elements and the last element.
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchRight = exports.matchRightW;
+/**
+ * Alias of [`matchRight`](#matchright).
+ *
+ * @category pattern matching
+ * @since 2.5.0
+ */
+exports.foldRight = exports.matchRight;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * @category sequencing
+ * @since 2.7.0
+ */
+var chainWithIndex = function (f) {
+    return function (as) {
+        if ((0, exports.isEmpty)(as)) {
+            return exports.empty;
+        }
+        var out = [];
+        for (var i = 0; i < as.length; i++) {
+            out.push.apply(out, f(i, as[i]));
+        }
+        return out;
+    };
+};
+exports.chainWithIndex = chainWithIndex;
+/**
+ * Same as `reduce` but it carries over the intermediate steps.
+ *
+ * @example
+ * import { scanLeft } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(scanLeft(10, (b, a: number) => b - a)([1, 2, 3]), [10, 9, 7, 4])
+ *
+ * @since 2.5.0
+ */
+var scanLeft = function (b, f) {
+    return function (as) {
+        var len = as.length;
+        var out = new Array(len + 1);
+        out[0] = b;
+        for (var i = 0; i < len; i++) {
+            out[i + 1] = f(out[i], as[i]);
+        }
+        return out;
+    };
+};
+exports.scanLeft = scanLeft;
+/**
+ * Fold an array from the right, keeping all intermediate results instead of only the final result
+ *
+ * @example
+ * import { scanRight } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(scanRight(10, (a: number, b) => b - a)([1, 2, 3]), [4, 5, 7, 10])
+ *
+ * @since 2.5.0
+ */
+var scanRight = function (b, f) {
+    return function (as) {
+        var len = as.length;
+        var out = new Array(len + 1);
+        out[len] = b;
+        for (var i = len - 1; i >= 0; i--) {
+            out[i] = f(as[i], out[i + 1]);
+        }
+        return out;
+    };
+};
+exports.scanRight = scanRight;
+/**
+ * Calculate the number of elements in a `ReadonlyArray`.
+ *
+ * @since 2.10.0
+ */
+var size = function (as) { return as.length; };
+exports.size = size;
+/**
+ * Test whether an array contains a particular index
+ *
+ * @since 2.5.0
+ */
+exports.isOutOfBound = RNEA.isOutOfBound;
+function lookup(i, as) {
+    return as === undefined ? function (as) { return lookup(i, as); } : (0, exports.isOutOfBound)(i, as) ? _.none : _.some(as[i]);
+}
+exports.lookup = lookup;
+/**
+ * Get the first element in an array, or `None` if the array is empty
+ *
+ * @example
+ * import { head } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(head([1, 2, 3]), some(1))
+ * assert.deepStrictEqual(head([]), none)
+ *
+ * @since 2.5.0
+ */
+var head = function (as) { return ((0, exports.isNonEmpty)(as) ? _.some(RNEA.head(as)) : _.none); };
+exports.head = head;
+/**
+ * Get the last element in an array, or `None` if the array is empty
+ *
+ * @example
+ * import { last } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(last([1, 2, 3]), some(3))
+ * assert.deepStrictEqual(last([]), none)
+ *
+ * @since 2.5.0
+ */
+var last = function (as) { return ((0, exports.isNonEmpty)(as) ? _.some(RNEA.last(as)) : _.none); };
+exports.last = last;
+/**
+ * Get all but the first element of an array, creating a new array, or `None` if the array is empty
+ *
+ * @example
+ * import { tail } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(tail([1, 2, 3]), some([2, 3]))
+ * assert.deepStrictEqual(tail([]), none)
+ *
+ * @since 2.5.0
+ */
+var tail = function (as) {
+    return (0, exports.isNonEmpty)(as) ? _.some(RNEA.tail(as)) : _.none;
+};
+exports.tail = tail;
+/**
+ * Get all but the last element of an array, creating a new array, or `None` if the array is empty
+ *
+ * @example
+ * import { init } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(init([1, 2, 3]), some([1, 2]))
+ * assert.deepStrictEqual(init([]), none)
+ *
+ * @since 2.5.0
+ */
+var init = function (as) {
+    return (0, exports.isNonEmpty)(as) ? _.some(RNEA.init(as)) : _.none;
+};
+exports.init = init;
+/**
+ * Keep only a max number of elements from the start of an `ReadonlyArray`, creating a new `ReadonlyArray`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const input: ReadonlyArray<number> = [1, 2, 3]
+ * assert.deepStrictEqual(pipe(input, RA.takeLeft(2)), [1, 2])
+ *
+ * // out of bounds
+ * assert.strictEqual(pipe(input, RA.takeLeft(4)), input)
+ * assert.strictEqual(pipe(input, RA.takeLeft(-1)), input)
+ *
+ * @since 2.5.0
+ */
+var takeLeft = function (n) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(n, as) ? as : n === 0 ? exports.empty : as.slice(0, n);
+    };
+};
+exports.takeLeft = takeLeft;
+/**
+ * Keep only a max number of elements from the end of an `ReadonlyArray`, creating a new `ReadonlyArray`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const input: ReadonlyArray<number> = [1, 2, 3]
+ * assert.deepStrictEqual(pipe(input, RA.takeRight(2)), [2, 3])
+ *
+ * // out of bounds
+ * assert.strictEqual(pipe(input, RA.takeRight(4)), input)
+ * assert.strictEqual(pipe(input, RA.takeRight(-1)), input)
+ *
+ * @since 2.5.0
+ */
+var takeRight = function (n) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(n, as) ? as : n === 0 ? exports.empty : as.slice(-n);
+    };
+};
+exports.takeRight = takeRight;
+function takeLeftWhile(predicate) {
+    return function (as) {
+        var out = [];
+        for (var _i = 0, as_1 = as; _i < as_1.length; _i++) {
+            var a = as_1[_i];
+            if (!predicate(a)) {
+                break;
+            }
+            out.push(a);
+        }
+        var len = out.length;
+        return len === as.length ? as : len === 0 ? exports.empty : out;
+    };
+}
+exports.takeLeftWhile = takeLeftWhile;
+var spanLeftIndex = function (as, predicate) {
+    var l = as.length;
+    var i = 0;
+    for (; i < l; i++) {
+        if (!predicate(as[i])) {
+            break;
+        }
+    }
+    return i;
+};
+function spanLeft(predicate) {
+    return function (as) {
+        var _a = (0, exports.splitAt)(spanLeftIndex(as, predicate))(as), init = _a[0], rest = _a[1];
+        return { init: init, rest: rest };
+    };
+}
+exports.spanLeft = spanLeft;
+/**
+ * Drop a max number of elements from the start of an `ReadonlyArray`, creating a new `ReadonlyArray`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const input: ReadonlyArray<number> = [1, 2, 3]
+ * assert.deepStrictEqual(pipe(input, RA.dropLeft(2)), [3])
+ * assert.strictEqual(pipe(input, RA.dropLeft(0)), input)
+ * assert.strictEqual(pipe(input, RA.dropLeft(-1)), input)
+ *
+ * @since 2.5.0
+ */
+var dropLeft = function (n) {
+    return function (as) {
+        return n <= 0 || (0, exports.isEmpty)(as) ? as : n >= as.length ? exports.empty : as.slice(n, as.length);
+    };
+};
+exports.dropLeft = dropLeft;
+/**
+ * Drop a max number of elements from the end of an `ReadonlyArray`, creating a new `ReadonlyArray`.
+ *
+ * **Note**. `n` is normalized to a non negative integer.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const input: ReadonlyArray<number> = [1, 2, 3]
+ * assert.deepStrictEqual(pipe(input, RA.dropRight(2)), [1])
+ * assert.strictEqual(pipe(input, RA.dropRight(0)), input)
+ * assert.strictEqual(pipe(input, RA.dropRight(-1)), input)
+ *
+ * @since 2.5.0
+ */
+var dropRight = function (n) {
+    return function (as) {
+        return n <= 0 || (0, exports.isEmpty)(as) ? as : n >= as.length ? exports.empty : as.slice(0, as.length - n);
+    };
+};
+exports.dropRight = dropRight;
+function dropLeftWhile(predicate) {
+    return function (as) {
+        var i = spanLeftIndex(as, predicate);
+        return i === 0 ? as : i === as.length ? exports.empty : as.slice(i);
+    };
+}
+exports.dropLeftWhile = dropLeftWhile;
+/**
+ * Find the first index for which a predicate holds
+ *
+ * @example
+ * import { findIndex } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(findIndex((n: number) => n === 2)([1, 2, 3]), some(1))
+ * assert.deepStrictEqual(findIndex((n: number) => n === 2)([]), none)
+ *
+ * @since 2.5.0
+ */
+var findIndex = function (predicate) {
+    return function (as) {
+        for (var i = 0; i < as.length; i++) {
+            if (predicate(as[i])) {
+                return _.some(i);
+            }
+        }
+        return _.none;
+    };
+};
+exports.findIndex = findIndex;
+function findFirst(predicate) {
+    return function (as) {
+        for (var i = 0; i < as.length; i++) {
+            if (predicate(as[i])) {
+                return _.some(as[i]);
+            }
+        }
+        return _.none;
+    };
+}
+exports.findFirst = findFirst;
+/**
+ * Find the first element returned by an option based selector function
+ *
+ * @example
+ * import { findFirstMap } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * interface Person {
+ *   readonly name: string
+ *   readonly age?: number
+ * }
+ *
+ * const persons: ReadonlyArray<Person> = [{ name: 'John' }, { name: 'Mary', age: 45 }, { name: 'Joey', age: 28 }]
+ *
+ * // returns the name of the first person that has an age
+ * assert.deepStrictEqual(findFirstMap((p: Person) => (p.age === undefined ? none : some(p.name)))(persons), some('Mary'))
+ *
+ * @since 2.5.0
+ */
+var findFirstMap = function (f) {
+    return function (as) {
+        for (var i = 0; i < as.length; i++) {
+            var out = f(as[i]);
+            if (_.isSome(out)) {
+                return out;
+            }
+        }
+        return _.none;
+    };
+};
+exports.findFirstMap = findFirstMap;
+function findLast(predicate) {
+    return function (as) {
+        for (var i = as.length - 1; i >= 0; i--) {
+            if (predicate(as[i])) {
+                return _.some(as[i]);
+            }
+        }
+        return _.none;
+    };
+}
+exports.findLast = findLast;
+/**
+ * Find the last element returned by an option based selector function
+ *
+ * @example
+ * import { findLastMap } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * interface Person {
+ *   readonly name: string
+ *   readonly age?: number
+ * }
+ *
+ * const persons: ReadonlyArray<Person> = [{ name: 'John' }, { name: 'Mary', age: 45 }, { name: 'Joey', age: 28 }]
+ *
+ * // returns the name of the last person that has an age
+ * assert.deepStrictEqual(findLastMap((p: Person) => (p.age === undefined ? none : some(p.name)))(persons), some('Joey'))
+ *
+ * @since 2.5.0
+ */
+var findLastMap = function (f) {
+    return function (as) {
+        for (var i = as.length - 1; i >= 0; i--) {
+            var out = f(as[i]);
+            if (_.isSome(out)) {
+                return out;
+            }
+        }
+        return _.none;
+    };
+};
+exports.findLastMap = findLastMap;
+/**
+ * Returns the index of the last element of the list which matches the predicate
+ *
+ * @example
+ * import { findLastIndex } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * interface X {
+ *   readonly a: number
+ *   readonly b: number
+ * }
+ * const xs: ReadonlyArray<X> = [{ a: 1, b: 0 }, { a: 1, b: 1 }]
+ * assert.deepStrictEqual(findLastIndex((x: { readonly a: number }) => x.a === 1)(xs), some(1))
+ * assert.deepStrictEqual(findLastIndex((x: { readonly a: number }) => x.a === 4)(xs), none)
+ *
+ *
+ * @since 2.5.0
+ */
+var findLastIndex = function (predicate) {
+    return function (as) {
+        for (var i = as.length - 1; i >= 0; i--) {
+            if (predicate(as[i])) {
+                return _.some(i);
+            }
+        }
+        return _.none;
+    };
+};
+exports.findLastIndex = findLastIndex;
+/**
+ * Insert an element at the specified index, creating a new array, or returning `None` if the index is out of bounds
+ *
+ * @example
+ * import { insertAt } from 'fp-ts/ReadonlyArray'
+ * import { some } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(insertAt(2, 5)([1, 2, 3, 4]), some([1, 2, 5, 3, 4]))
+ *
+ * @since 2.5.0
+ */
+var insertAt = function (i, a) {
+    return function (as) {
+        return i < 0 || i > as.length ? _.none : _.some(RNEA.unsafeInsertAt(i, a, as));
+    };
+};
+exports.insertAt = insertAt;
+/**
+ * Change the element at the specified index, creating a new array, or returning `None` if the index is out of bounds
+ *
+ * @example
+ * import { updateAt } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(updateAt(1, 1)([1, 2, 3]), some([1, 1, 3]))
+ * assert.deepStrictEqual(updateAt(1, 1)([]), none)
+ *
+ * @since 2.5.0
+ */
+var updateAt = function (i, a) {
+    return (0, exports.modifyAt)(i, function () { return a; });
+};
+exports.updateAt = updateAt;
+/**
+ * Delete the element at the specified index, creating a new array, or returning `None` if the index is out of bounds
+ *
+ * @example
+ * import { deleteAt } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * assert.deepStrictEqual(deleteAt(0)([1, 2, 3]), some([2, 3]))
+ * assert.deepStrictEqual(deleteAt(1)([]), none)
+ *
+ * @since 2.5.0
+ */
+var deleteAt = function (i) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(i, as) ? _.none : _.some((0, exports.unsafeDeleteAt)(i, as));
+    };
+};
+exports.deleteAt = deleteAt;
+/**
+ * Apply a function to the element at the specified index, creating a new array, or returning `None` if the index is out
+ * of bounds
+ *
+ * @example
+ * import { modifyAt } from 'fp-ts/ReadonlyArray'
+ * import { some, none } from 'fp-ts/Option'
+ *
+ * const double = (x: number): number => x * 2
+ * assert.deepStrictEqual(modifyAt(1, double)([1, 2, 3]), some([1, 4, 3]))
+ * assert.deepStrictEqual(modifyAt(1, double)([]), none)
+ *
+ * @since 2.5.0
+ */
+var modifyAt = function (i, f) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(i, as) ? _.none : _.some((0, exports.unsafeUpdateAt)(i, f(as[i]), as));
+    };
+};
+exports.modifyAt = modifyAt;
+/**
+ * Reverse an array, creating a new array
+ *
+ * @example
+ * import { reverse } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(reverse([1, 2, 3]), [3, 2, 1])
+ *
+ * @since 2.5.0
+ */
+var reverse = function (as) { return (as.length <= 1 ? as : as.slice().reverse()); };
+exports.reverse = reverse;
+/**
+ * Extracts from an array of `Either` all the `Right` elements. All the `Right` elements are extracted in order
+ *
+ * @example
+ * import { rights } from 'fp-ts/ReadonlyArray'
+ * import { right, left } from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(rights([right(1), left('foo'), right(2)]), [1, 2])
+ *
+ * @since 2.5.0
+ */
+var rights = function (as) {
+    var r = [];
+    for (var i = 0; i < as.length; i++) {
+        var a = as[i];
+        if (a._tag === 'Right') {
+            r.push(a.right);
+        }
+    }
+    return r;
+};
+exports.rights = rights;
+/**
+ * Extracts from an array of `Either` all the `Left` elements. All the `Left` elements are extracted in order
+ *
+ * @example
+ * import { lefts } from 'fp-ts/ReadonlyArray'
+ * import { left, right } from 'fp-ts/Either'
+ *
+ * assert.deepStrictEqual(lefts([right(1), left('foo'), right(2)]), ['foo'])
+ *
+ * @since 2.5.0
+ */
+var lefts = function (as) {
+    var r = [];
+    for (var i = 0; i < as.length; i++) {
+        var a = as[i];
+        if (a._tag === 'Left') {
+            r.push(a.left);
+        }
+    }
+    return r;
+};
+exports.lefts = lefts;
+/**
+ * Sort the elements of an array in increasing order, creating a new array
+ *
+ * @example
+ * import { sort } from 'fp-ts/ReadonlyArray'
+ * import * as N from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(sort(N.Ord)([3, 2, 1]), [1, 2, 3])
+ *
+ * @since 2.5.0
+ */
+var sort = function (O) {
+    return function (as) {
+        return as.length <= 1 ? as : as.slice().sort(O.compare);
+    };
+};
+exports.sort = sort;
+// TODO: curry and make data-last in v3
+/**
+ * Apply a function to pairs of elements at the same index in two arrays, collecting the results in a new array. If one
+ * input array is short, excess elements of the longer array are discarded.
+ *
+ * @example
+ * import { zipWith } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(zipWith([1, 2, 3], ['a', 'b', 'c', 'd'], (n, s) => s + n), ['a1', 'b2', 'c3'])
+ *
+ * @since 2.5.0
+ */
+var zipWith = function (fa, fb, f) {
+    var fc = [];
+    var len = Math.min(fa.length, fb.length);
+    for (var i = 0; i < len; i++) {
+        fc[i] = f(fa[i], fb[i]);
+    }
+    return fc;
+};
+exports.zipWith = zipWith;
+function zip(as, bs) {
+    if (bs === undefined) {
+        return function (bs) { return zip(bs, as); };
+    }
+    return (0, exports.zipWith)(as, bs, function (a, b) { return [a, b]; });
+}
+exports.zip = zip;
+/**
+ * The function is reverse of `zip`. Takes an array of pairs and return two corresponding arrays
+ *
+ * @example
+ * import { unzip } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(unzip([[1, 'a'], [2, 'b'], [3, 'c']]), [[1, 2, 3], ['a', 'b', 'c']])
+ *
+ * @since 2.5.0
+ */
+var unzip = function (as) {
+    var fa = [];
+    var fb = [];
+    for (var i = 0; i < as.length; i++) {
+        fa[i] = as[i][0];
+        fb[i] = as[i][1];
+    }
+    return [fa, fb];
+};
+exports.unzip = unzip;
+/**
+ * Prepend an element to every member of an array
+ *
+ * @example
+ * import { prependAll } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(prependAll(9)([1, 2, 3, 4]), [9, 1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.10.0
+ */
+var prependAll = function (middle) {
+    var f = RNEA.prependAll(middle);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : as); };
+};
+exports.prependAll = prependAll;
+/**
+ * Places an element in between members of an array
+ *
+ * @example
+ * import { intersperse } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(intersperse(9)([1, 2, 3, 4]), [1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.9.0
+ */
+var intersperse = function (middle) {
+    var f = RNEA.intersperse(middle);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : as); };
+};
+exports.intersperse = intersperse;
+/**
+ * Rotate a `ReadonlyArray` by `n` steps.
+ *
+ * @example
+ * import { rotate } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(rotate(2)([1, 2, 3, 4, 5]), [4, 5, 1, 2, 3])
+ *
+ * @since 2.5.0
+ */
+var rotate = function (n) {
+    var f = RNEA.rotate(n);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : as); };
+};
+exports.rotate = rotate;
+function elem(E) {
+    return function (a, as) {
+        if (as === undefined) {
+            var elemE_1 = elem(E);
+            return function (as) { return elemE_1(a, as); };
+        }
+        var predicate = function (element) { return E.equals(element, a); };
+        var i = 0;
+        for (; i < as.length; i++) {
+            if (predicate(as[i])) {
+                return true;
+            }
+        }
+        return false;
+    };
+}
+exports.elem = elem;
+/**
+ * Remove duplicates from an array, keeping the first occurrence of an element.
+ *
+ * @example
+ * import { uniq } from 'fp-ts/ReadonlyArray'
+ * import * as N from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(uniq(N.Eq)([1, 2, 1]), [1, 2])
+ *
+ * @since 2.5.0
+ */
+var uniq = function (E) {
+    var f = RNEA.uniq(E);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : as); };
+};
+exports.uniq = uniq;
+/**
+ * Sort the elements of an array in increasing order, where elements are compared using first `ords[0]`, then `ords[1]`,
+ * etc...
+ *
+ * @example
+ * import { sortBy } from 'fp-ts/ReadonlyArray'
+ * import { contramap } from 'fp-ts/Ord'
+ * import * as S from 'fp-ts/string'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * interface Person {
+ *   readonly name: string
+ *   readonly age: number
+ * }
+ * const byName = pipe(S.Ord, contramap((p: Person) => p.name))
+ * const byAge = pipe(N.Ord, contramap((p: Person) => p.age))
+ *
+ * const sortByNameByAge = sortBy([byName, byAge])
+ *
+ * const persons = [{ name: 'a', age: 1 }, { name: 'b', age: 3 }, { name: 'c', age: 2 }, { name: 'b', age: 2 }]
+ * assert.deepStrictEqual(sortByNameByAge(persons), [
+ *   { name: 'a', age: 1 },
+ *   { name: 'b', age: 2 },
+ *   { name: 'b', age: 3 },
+ *   { name: 'c', age: 2 }
+ * ])
+ *
+ * @since 2.5.0
+ */
+var sortBy = function (ords) {
+    var f = RNEA.sortBy(ords);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : as); };
+};
+exports.sortBy = sortBy;
+/**
+ * A useful recursion pattern for processing a `ReadonlyArray` to produce a new `ReadonlyArray`, often used for "chopping" up the input
+ * `ReadonlyArray`. Typically `chop` is called with some function that will consume an initial prefix of the `ReadonlyArray` and produce a
+ * value and the tail of the `ReadonlyArray`.
+ *
+ * @example
+ * import { Eq } from 'fp-ts/Eq'
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const group = <A>(S: Eq<A>): ((as: ReadonlyArray<A>) => ReadonlyArray<ReadonlyArray<A>>) => {
+ *   return RA.chop(as => {
+ *     const { init, rest } = pipe(as, RA.spanLeft((a: A) => S.equals(a, as[0])))
+ *     return [init, rest]
+ *   })
+ * }
+ * assert.deepStrictEqual(group(N.Eq)([1, 1, 2, 3, 3, 4]), [[1, 1], [2], [3, 3], [4]])
+ *
+ * @since 2.5.0
+ */
+var chop = function (f) {
+    var g = RNEA.chop(f);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? g(as) : exports.empty); };
+};
+exports.chop = chop;
+/**
+ * Splits a `ReadonlyArray` into two pieces, the first piece has max `n` elements.
+ *
+ * @example
+ * import { splitAt } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(splitAt(2)([1, 2, 3, 4, 5]), [[1, 2], [3, 4, 5]])
+ *
+ * @since 2.5.0
+ */
+var splitAt = function (n) {
+    return function (as) {
+        return n >= 1 && (0, exports.isNonEmpty)(as) ? RNEA.splitAt(n)(as) : (0, exports.isEmpty)(as) ? [as, exports.empty] : [exports.empty, as];
+    };
+};
+exports.splitAt = splitAt;
+/**
+ * Splits a `ReadonlyArray` into length-`n` pieces. The last piece will be shorter if `n` does not evenly divide the length of
+ * the `ReadonlyArray`. Note that `chunksOf(n)([])` is `[]`, not `[[]]`. This is intentional, and is consistent with a recursive
+ * definition of `chunksOf`; it satisfies the property that:
+ *
+ * ```ts
+ * chunksOf(n)(xs).concat(chunksOf(n)(ys)) == chunksOf(n)(xs.concat(ys)))
+ * ```
+ *
+ * whenever `n` evenly divides the length of `as`.
+ *
+ * @example
+ * import { chunksOf } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(chunksOf(2)([1, 2, 3, 4, 5]), [[1, 2], [3, 4], [5]])
+ *
+ * @since 2.5.0
+ */
+var chunksOf = function (n) {
+    var f = RNEA.chunksOf(n);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? f(as) : exports.empty); };
+};
+exports.chunksOf = chunksOf;
+/**
+ * @category lifting
+ * @since 2.11.0
+ */
+var fromOptionK = function (f) {
+    return function () {
+        var a = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            a[_i] = arguments[_i];
+        }
+        return (0, exports.fromOption)(f.apply(void 0, a));
+    };
+};
+exports.fromOptionK = fromOptionK;
+function comprehension(input, f, g) {
+    if (g === void 0) { g = function () { return true; }; }
+    var go = function (scope, input) {
+        return (0, exports.isNonEmpty)(input)
+            ? (0, exports.flatMap)(RNEA.head(input), function (a) { return go((0, function_1.pipe)(scope, (0, exports.append)(a)), RNEA.tail(input)); })
+            : g.apply(void 0, scope) ? [f.apply(void 0, scope)]
+                : exports.empty;
+    };
+    return go(exports.empty, input);
+}
+exports.comprehension = comprehension;
+/**
+ * @since 2.11.0
+ */
+var concatW = function (second) {
+    return function (first) {
+        return (0, exports.isEmpty)(first) ? second : (0, exports.isEmpty)(second) ? first : first.concat(second);
+    };
+};
+exports.concatW = concatW;
+/**
+ * @since 2.11.0
+ */
+exports.concat = exports.concatW;
+function union(E) {
+    var unionE = RNEA.union(E);
+    return function (first, second) {
+        if (second === undefined) {
+            var unionE_1 = union(E);
+            return function (second) { return unionE_1(second, first); };
+        }
+        return (0, exports.isNonEmpty)(first) && (0, exports.isNonEmpty)(second) ? unionE(second)(first) : (0, exports.isNonEmpty)(first) ? first : second;
+    };
+}
+exports.union = union;
+function intersection(E) {
+    var elemE = elem(E);
+    return function (xs, ys) {
+        if (ys === undefined) {
+            var intersectionE_1 = intersection(E);
+            return function (ys) { return intersectionE_1(ys, xs); };
+        }
+        return xs.filter(function (a) { return elemE(a, ys); });
+    };
+}
+exports.intersection = intersection;
+function difference(E) {
+    var elemE = elem(E);
+    return function (xs, ys) {
+        if (ys === undefined) {
+            var differenceE_1 = difference(E);
+            return function (ys) { return differenceE_1(ys, xs); };
+        }
+        return xs.filter(function (a) { return !elemE(a, ys); });
+    };
+}
+exports.difference = difference;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+var _mapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.mapWithIndex)(f)); };
+var _ap = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+var _filter = function (fa, predicate) {
+    return (0, function_1.pipe)(fa, (0, exports.filter)(predicate));
+};
+var _filterMap = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.filterMap)(f)); };
+var _partition = function (fa, predicate) {
+    return (0, function_1.pipe)(fa, (0, exports.partition)(predicate));
+};
+var _partitionMap = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.partitionMap)(f)); };
+var _partitionWithIndex = function (fa, predicateWithIndex) { return (0, function_1.pipe)(fa, (0, exports.partitionWithIndex)(predicateWithIndex)); };
+var _partitionMapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.partitionMapWithIndex)(f)); };
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+var _reduce = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduce)(b, f)); };
+var _foldMap = function (M) {
+    var foldMapM = (0, exports.foldMap)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapM(f)); };
+};
+var _reduceRight = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduceRight)(b, f)); };
+var _reduceWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceWithIndex)(b, f));
+};
+var _foldMapWithIndex = function (M) {
+    var foldMapWithIndexM = (0, exports.foldMapWithIndex)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapWithIndexM(f)); };
+};
+var _reduceRightWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceRightWithIndex)(b, f));
+};
+var _filterMapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.filterMapWithIndex)(f)); };
+var _filterWithIndex = function (fa, predicateWithIndex) { return (0, function_1.pipe)(fa, (0, exports.filterWithIndex)(predicateWithIndex)); };
+var _extend = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.extend)(f)); };
+var _traverse = function (F) {
+    var traverseF = (0, exports.traverse)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseF(f)); };
+};
+/* istanbul ignore next */
+var _traverseWithIndex = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseWithIndexF(f)); };
+};
+/** @internal */
+var _chainRecDepthFirst = function (a, f) { return (0, function_1.pipe)(a, (0, exports.chainRecDepthFirst)(f)); };
+exports._chainRecDepthFirst = _chainRecDepthFirst;
+/** @internal */
+var _chainRecBreadthFirst = function (a, f) { return (0, function_1.pipe)(a, (0, exports.chainRecBreadthFirst)(f)); };
+exports._chainRecBreadthFirst = _chainRecBreadthFirst;
+/**
+ * @category constructors
+ * @since 2.5.0
+ */
+exports.of = RNEA.of;
+/**
+ * @since 2.7.0
+ */
+var zero = function () { return exports.empty; };
+exports.zero = zero;
+/**
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.altW(() => ['a', 'b'])
+ *   ),
+ *   [1, 2, 3, 'a', 'b']
+ * )
+ *
+ * @category error handling
+ * @since 2.9.0
+ */
+var altW = function (that) {
+    return function (fa) {
+        return fa.concat(that());
+    };
+};
+exports.altW = altW;
+/**
+ * Identifies an associative operation on a type constructor. It is similar to `Semigroup`, except that it applies to
+ * types of kind `* -> *`.
+ *
+ * In case of `ReadonlyArray` concatenates the inputs into a single array.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.alt(() => [4, 5])
+ *   ),
+ *   [1, 2, 3, 4, 5]
+ * )
+ *
+ * @category error handling
+ * @since 2.5.0
+ */
+exports.alt = exports.altW;
+/**
+ * @since 2.5.0
+ */
+var ap = function (fa) {
+    return (0, exports.flatMap)(function (f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); });
+};
+exports.ap = ap;
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.flatMap((n) => [`a${n}`, `b${n}`])
+ *   ),
+ *   ['a1', 'b1', 'a2', 'b2', 'a3', 'b3']
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.flatMap(() => [])
+ *   ),
+ *   []
+ * )
+ *
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) {
+    return (0, function_1.pipe)(ma, (0, exports.chainWithIndex)(function (i, a) { return f(a, i); }));
+});
+/**
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.flatten = (0, exports.flatMap)(function_1.identity);
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: F<A>) => F<B>` whose argument and return types
+ * use the type constructor `F` to represent some computational context.
+ *
+ * @category mapping
+ * @since 2.5.0
+ */
+var map = function (f) { return function (fa) {
+    return fa.map(function (a) { return f(a); });
+}; };
+exports.map = map;
+/**
+ * @category mapping
+ * @since 2.5.0
+ */
+var mapWithIndex = function (f) { return function (fa) {
+    return fa.map(function (a, i) { return f(i, a); });
+}; };
+exports.mapWithIndex = mapWithIndex;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var separate = function (fa) {
+    var left = [];
+    var right = [];
+    for (var _i = 0, fa_1 = fa; _i < fa_1.length; _i++) {
+        var e = fa_1[_i];
+        if (e._tag === 'Left') {
+            left.push(e.left);
+        }
+        else {
+            right.push(e.right);
+        }
+    }
+    return (0, Separated_1.separated)(left, right);
+};
+exports.separate = separate;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var filter = function (predicate) {
+    return function (as) {
+        return as.filter(predicate);
+    };
+};
+exports.filter = filter;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var filterMapWithIndex = function (f) {
+    return function (fa) {
+        var out = [];
+        for (var i = 0; i < fa.length; i++) {
+            var optionB = f(i, fa[i]);
+            if (_.isSome(optionB)) {
+                out.push(optionB.value);
+            }
+        }
+        return out;
+    };
+};
+exports.filterMapWithIndex = filterMapWithIndex;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var filterMap = function (f) {
+    return (0, exports.filterMapWithIndex)(function (_, a) { return f(a); });
+};
+exports.filterMap = filterMap;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+exports.compact = (0, exports.filterMap)(function_1.identity);
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var partition = function (predicate) {
+    return (0, exports.partitionWithIndex)(function (_, a) { return predicate(a); });
+};
+exports.partition = partition;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var partitionWithIndex = function (predicateWithIndex) {
+    return function (as) {
+        var left = [];
+        var right = [];
+        for (var i = 0; i < as.length; i++) {
+            var a = as[i];
+            if (predicateWithIndex(i, a)) {
+                right.push(a);
+            }
+            else {
+                left.push(a);
+            }
+        }
+        return (0, Separated_1.separated)(left, right);
+    };
+};
+exports.partitionWithIndex = partitionWithIndex;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var partitionMap = function (f) {
+    return (0, exports.partitionMapWithIndex)(function (_, a) { return f(a); });
+};
+exports.partitionMap = partitionMap;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var partitionMapWithIndex = function (f) {
+    return function (fa) {
+        var left = [];
+        var right = [];
+        for (var i = 0; i < fa.length; i++) {
+            var e = f(i, fa[i]);
+            if (e._tag === 'Left') {
+                left.push(e.left);
+            }
+            else {
+                right.push(e.right);
+            }
+        }
+        return (0, Separated_1.separated)(left, right);
+    };
+};
+exports.partitionMapWithIndex = partitionMapWithIndex;
+/**
+ * @category filtering
+ * @since 2.5.0
+ */
+var filterWithIndex = function (predicateWithIndex) {
+    return function (as) {
+        return as.filter(function (a, i) { return predicateWithIndex(i, a); });
+    };
+};
+exports.filterWithIndex = filterWithIndex;
+/**
+ * @since 2.5.0
+ */
+var extend = function (f) { return function (wa) {
+    return wa.map(function (_, i) { return f(wa.slice(i)); });
+}; };
+exports.extend = extend;
+/**
+ * @since 2.5.0
+ */
+exports.duplicate = (0, exports.extend)(function_1.identity);
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var foldMapWithIndex = function (M) {
+    return function (f) {
+        return function (fa) {
+            return fa.reduce(function (b, a, i) { return M.concat(b, f(i, a)); }, M.empty);
+        };
+    };
+};
+exports.foldMapWithIndex = foldMapWithIndex;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduce = function (b, f) {
+    return (0, exports.reduceWithIndex)(b, function (_, b, a) { return f(b, a); });
+};
+exports.reduce = reduce;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var foldMap = function (M) {
+    var foldMapWithIndexM = (0, exports.foldMapWithIndex)(M);
+    return function (f) { return foldMapWithIndexM(function (_, a) { return f(a); }); };
+};
+exports.foldMap = foldMap;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduceWithIndex = function (b, f) { return function (fa) {
+    var len = fa.length;
+    var out = b;
+    for (var i = 0; i < len; i++) {
+        out = f(i, out, fa[i]);
+    }
+    return out;
+}; };
+exports.reduceWithIndex = reduceWithIndex;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduceRight = function (b, f) {
+    return (0, exports.reduceRightWithIndex)(b, function (_, a, b) { return f(a, b); });
+};
+exports.reduceRight = reduceRight;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduceRightWithIndex = function (b, f) { return function (fa) {
+    return fa.reduceRight(function (b, a, i) { return f(i, a, b); }, b);
+}; };
+exports.reduceRightWithIndex = reduceRightWithIndex;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var traverse = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (f) { return traverseWithIndexF(function (_, a) { return f(a); }); };
+};
+exports.traverse = traverse;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var sequence = function (F) {
+    return function (ta) {
+        return _reduce(ta, F.of((0, exports.zero)()), function (fas, fa) {
+            return F.ap(F.map(fas, function (as) { return function (a) { return (0, function_1.pipe)(as, (0, exports.append)(a)); }; }), fa);
+        });
+    };
+};
+exports.sequence = sequence;
+/**
+ * @category sequencing
+ * @since 2.6.3
+ */
+var traverseWithIndex = function (F) {
+    return function (f) {
+        return (0, exports.reduceWithIndex)(F.of((0, exports.zero)()), function (i, fbs, a) {
+            return F.ap(F.map(fbs, function (bs) { return function (b) { return (0, function_1.pipe)(bs, (0, exports.append)(b)); }; }), f(i, a));
+        });
+    };
+};
+exports.traverseWithIndex = traverseWithIndex;
+/**
+ * @category filtering
+ * @since 2.6.5
+ */
+var wither = function (F) {
+    var _witherF = _wither(F);
+    return function (f) { return function (fa) { return _witherF(fa, f); }; };
+};
+exports.wither = wither;
+/**
+ * @category filtering
+ * @since 2.6.5
+ */
+var wilt = function (F) {
+    var _wiltF = _wilt(F);
+    return function (f) { return function (fa) { return _wiltF(fa, f); }; };
+};
+exports.wilt = wilt;
+/**
+ * @since 2.6.6
+ */
+var unfold = function (b, f) {
+    var out = [];
+    var bb = b;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+        var mt = f(bb);
+        if (_.isSome(mt)) {
+            var _a = mt.value, a = _a[0], b_1 = _a[1];
+            out.push(a);
+            bb = b_1;
+        }
+        else {
+            break;
+        }
+    }
+    return out;
+};
+exports.unfold = unfold;
+/**
+ * @category type lambdas
+ * @since 2.5.0
+ */
+exports.URI = 'ReadonlyArray';
+/**
+ * @category instances
+ * @since 2.5.0
+ */
+var getShow = function (S) { return ({
+    show: function (as) { return "[".concat(as.map(S.show).join(', '), "]"); }
+}); };
+exports.getShow = getShow;
+/**
+ * @category instances
+ * @since 2.5.0
+ */
+var getSemigroup = function () { return ({
+    concat: function (first, second) { return ((0, exports.isEmpty)(first) ? second : (0, exports.isEmpty)(second) ? first : first.concat(second)); }
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * Returns a `Monoid` for `ReadonlyArray<A>`.
+ *
+ * @example
+ * import { getMonoid } from 'fp-ts/ReadonlyArray'
+ *
+ * const M = getMonoid<number>()
+ * assert.deepStrictEqual(M.concat([1, 2], [3, 4]), [1, 2, 3, 4])
+ *
+ * @category instances
+ * @since 2.5.0
+ */
+var getMonoid = function () { return ({
+    concat: (0, exports.getSemigroup)().concat,
+    empty: exports.empty
+}); };
+exports.getMonoid = getMonoid;
+/**
+ * Derives an `Eq` over the `ReadonlyArray` of a given element type from the `Eq` of that type. The derived `Eq` defines two
+ * arrays as equal if all elements of both arrays are compared equal pairwise with the given `E`. In case of arrays of
+ * different lengths, the result is non equality.
+ *
+ * @example
+ * import * as S from 'fp-ts/string'
+ * import { getEq } from 'fp-ts/ReadonlyArray'
+ *
+ * const E = getEq(S.Eq)
+ * assert.strictEqual(E.equals(['a', 'b'], ['a', 'b']), true)
+ * assert.strictEqual(E.equals(['a'], []), false)
+ *
+ * @category instances
+ * @since 2.5.0
+ */
+var getEq = function (E) {
+    return (0, Eq_1.fromEquals)(function (xs, ys) { return xs.length === ys.length && xs.every(function (x, i) { return E.equals(x, ys[i]); }); });
+};
+exports.getEq = getEq;
+/**
+ * Derives an `Ord` over the `ReadonlyArray` of a given element type from the `Ord` of that type. The ordering between two such
+ * arrays is equal to: the first non equal comparison of each arrays elements taken pairwise in increasing order, in
+ * case of equality over all the pairwise elements; the longest array is considered the greatest, if both arrays have
+ * the same length, the result is equality.
+ *
+ * @example
+ * import { getOrd } from 'fp-ts/ReadonlyArray'
+ * import * as S from 'fp-ts/string'
+ *
+ * const O = getOrd(S.Ord)
+ * assert.strictEqual(O.compare(['b'], ['a']), 1)
+ * assert.strictEqual(O.compare(['a'], ['a']), 0)
+ * assert.strictEqual(O.compare(['a'], ['b']), -1)
+ *
+ *
+ * @category instances
+ * @since 2.5.0
+ */
+var getOrd = function (O) {
+    return (0, Ord_1.fromCompare)(function (a, b) {
+        var aLen = a.length;
+        var bLen = b.length;
+        var len = Math.min(aLen, bLen);
+        for (var i = 0; i < len; i++) {
+            var ordering = O.compare(a[i], b[i]);
+            if (ordering !== 0) {
+                return ordering;
+            }
+        }
+        return N.Ord.compare(aLen, bLen);
+    });
+};
+exports.getOrd = getOrd;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getUnionSemigroup = function (E) {
+    var unionE = union(E);
+    return {
+        concat: function (first, second) { return unionE(second)(first); }
+    };
+};
+exports.getUnionSemigroup = getUnionSemigroup;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getUnionMonoid = function (E) { return ({
+    concat: (0, exports.getUnionSemigroup)(E).concat,
+    empty: exports.empty
+}); };
+exports.getUnionMonoid = getUnionMonoid;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getIntersectionSemigroup = function (E) {
+    var intersectionE = intersection(E);
+    return {
+        concat: function (first, second) { return intersectionE(second)(first); }
+    };
+};
+exports.getIntersectionSemigroup = getIntersectionSemigroup;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+var getDifferenceMagma = function (E) {
+    var differenceE = difference(E);
+    return {
+        concat: function (first, second) { return differenceE(second)(first); }
+    };
+};
+exports.getDifferenceMagma = getDifferenceMagma;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FunctorWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Apply = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap
+};
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.5.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.Apply);
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.5.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.Apply);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Applicative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap
+};
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.chainFirst(() => ['a', 'b'])
+ *   ),
+ *   [1, 1, 2, 2, 3, 3]
+ * )
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.chainFirst(() => [])
+ *   ),
+ *   []
+ * )
+ *
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.chainFirst = 
+/*#__PURE__*/ (0, Chain_1.chainFirst)(exports.Chain);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Unfoldable = {
+    URI: exports.URI,
+    unfold: exports.unfold
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.Zero = {
+    URI: exports.URI,
+    zero: exports.zero
+};
+/**
+ * @category do notation
+ * @since 2.11.0
+ */
+exports.guard = (0, Zero_1.guard)(exports.Zero, exports.Pointed);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alternative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    alt: _alt,
+    zero: exports.zero
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Extend = {
+    URI: exports.URI,
+    map: _map,
+    extend: _extend
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Compactable = {
+    URI: exports.URI,
+    compact: exports.compact,
+    separate: exports.separate
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Filterable = {
+    URI: exports.URI,
+    map: _map,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FilterableWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    partitionMapWithIndex: _partitionMapWithIndex,
+    partitionWithIndex: _partitionWithIndex,
+    filterMapWithIndex: _filterMapWithIndex,
+    filterWithIndex: _filterWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Foldable = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FoldableWithIndex = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Traversable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.TraversableWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    traverseWithIndex: _traverseWithIndex
+};
+/**
+ * @category sequencing
+ * @since 2.11.0
+ */
+var chainRecDepthFirst = function (f) {
+    return function (a) {
+        var todo = __spreadArray([], f(a), true);
+        var out = [];
+        while (todo.length > 0) {
+            var e = todo.shift();
+            if (_.isLeft(e)) {
+                todo.unshift.apply(todo, f(e.left));
+            }
+            else {
+                out.push(e.right);
+            }
+        }
+        return out;
+    };
+};
+exports.chainRecDepthFirst = chainRecDepthFirst;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.ChainRecDepthFirst = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap,
+    chainRec: exports._chainRecDepthFirst
+};
+/**
+ * @category sequencing
+ * @since 2.11.0
+ */
+var chainRecBreadthFirst = function (f) {
+    return function (a) {
+        var initial = f(a);
+        var todo = [];
+        var out = [];
+        function go(e) {
+            if (_.isLeft(e)) {
+                f(e.left).forEach(function (v) { return todo.push(v); });
+            }
+            else {
+                out.push(e.right);
+            }
+        }
+        for (var _i = 0, initial_1 = initial; _i < initial_1.length; _i++) {
+            var e = initial_1[_i];
+            go(e);
+        }
+        while (todo.length > 0) {
+            go(todo.shift());
+        }
+        return out;
+    };
+};
+exports.chainRecBreadthFirst = chainRecBreadthFirst;
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.ChainRecBreadthFirst = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap,
+    chainRec: exports._chainRecBreadthFirst
+};
+var _wither = /*#__PURE__*/ (0, Witherable_1.witherDefault)(exports.Traversable, exports.Compactable);
+var _wilt = /*#__PURE__*/ (0, Witherable_1.wiltDefault)(exports.Traversable, exports.Compactable);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Witherable = {
+    URI: exports.URI,
+    map: _map,
+    compact: exports.compact,
+    separate: exports.separate,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    wither: _wither,
+    wilt: _wilt
+};
+/**
+ * Filter values inside a context.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import * as T from 'fp-ts/Task'
+ *
+ * const filterE = RA.filterE(T.ApplicativePar)
+ * async function test() {
+ *   assert.deepStrictEqual(
+ *     await pipe(
+ *       [-1, 2, 3],
+ *       filterE((n) => T.of(n > 0))
+ *     )(),
+ *     [2, 3]
+ *   )
+ * }
+ * test()
+ *
+ * @since 2.11.0
+ */
+exports.filterE = (0, Witherable_1.filterE)(exports.Witherable);
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.FromEither = {
+    URI: exports.URI,
+    fromEither: exports.fromEither
+};
+/**
+ * @category lifting
+ * @since 2.11.0
+ */
+exports.fromEitherK = (0, FromEither_1.fromEitherK)(exports.FromEither);
+// -------------------------------------------------------------------------------------
+// unsafe
+// -------------------------------------------------------------------------------------
+/**
+ * @category unsafe
+ * @since 2.5.0
+ */
+exports.unsafeInsertAt = RNEA.unsafeInsertAt;
+/**
+ * @category unsafe
+ * @since 2.5.0
+ */
+var unsafeUpdateAt = function (i, a, as) {
+    return (0, exports.isNonEmpty)(as) ? RNEA.unsafeUpdateAt(i, a, as) : as;
+};
+exports.unsafeUpdateAt = unsafeUpdateAt;
+/**
+ * @category unsafe
+ * @since 2.5.0
+ */
+var unsafeDeleteAt = function (i, as) {
+    var xs = as.slice();
+    xs.splice(i, 1);
+    return xs;
+};
+exports.unsafeDeleteAt = unsafeDeleteAt;
+/**
+ * @category conversions
+ * @since 2.5.0
+ */
+var toArray = function (as) { return as.slice(); };
+exports.toArray = toArray;
+/**
+ * @category conversions
+ * @since 2.5.0
+ */
+var fromArray = function (as) { return ((0, exports.isEmpty)(as) ? exports.empty : as.slice()); };
+exports.fromArray = fromArray;
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * An empty array
+ *
+ * @since 2.5.0
+ */
+exports.empty = RNEA.empty;
+function every(predicate) {
+    return function (as) { return as.every(predicate); };
+}
+exports.every = every;
+/**
+ * Check if a predicate holds true for any array member.
+ *
+ * @example
+ * import { some } from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const isPositive = (n: number): boolean => n > 0
+ *
+ * assert.deepStrictEqual(pipe([-1, -2, 3], some(isPositive)), true)
+ * assert.deepStrictEqual(pipe([-1, -2, -3], some(isPositive)), false)
+ *
+ * @since 2.9.0
+ */
+var some = function (predicate) {
+    return function (as) {
+        return as.some(predicate);
+    };
+};
+exports.some = some;
+/**
+ * Alias of [`some`](#some)
+ *
+ * @since 2.11.0
+ */
+exports.exists = exports.some;
+/**
+ * Places an element in between members of a `ReadonlyArray`, then folds the results using the provided `Monoid`.
+ *
+ * @example
+ * import * as S from 'fp-ts/string'
+ * import { intercalate } from 'fp-ts/ReadonlyArray'
+ *
+ * assert.deepStrictEqual(intercalate(S.Monoid)('-')(['a', 'b', 'c']), 'a-b-c')
+ *
+ * @since 2.12.0
+ */
+var intercalate = function (M) {
+    var intercalateM = RNEA.intercalate(M);
+    return function (middle) { return (0, exports.match)(function () { return M.empty; }, intercalateM(middle)); };
+};
+exports.intercalate = intercalate;
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = (0, Chain_1.bind)(exports.Chain);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.Apply);
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.5.0
+ */
+exports.chain = exports.flatMap;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * Use `ReadonlyNonEmptyArray` module instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.range = RNEA.range;
+/**
+ * Use [`prepend`](#prepend) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.cons = RNEA.cons;
+/**
+ * Use [`append`](#append) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.snoc = RNEA.snoc;
+/**
+ * Use [`prependAll`](#prependall) instead.
+ *
+ * @category zone of death
+ * @since 2.9.0
+ * @deprecated
+ */
+exports.prependToAll = exports.prependAll;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `RA.Functor` instead of `RA.readonlyArray`
+ * (where `RA` is from `import RA from 'fp-ts/ReadonlyArray'`)
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.readonlyArray = {
+    URI: exports.URI,
+    compact: exports.compact,
+    separate: exports.separate,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap,
+    filter: _filter,
+    filterMap: _filterMap,
+    partition: _partition,
+    partitionMap: _partitionMap,
+    mapWithIndex: _mapWithIndex,
+    partitionMapWithIndex: _partitionMapWithIndex,
+    partitionWithIndex: _partitionWithIndex,
+    filterMapWithIndex: _filterMapWithIndex,
+    filterWithIndex: _filterWithIndex,
+    alt: _alt,
+    zero: exports.zero,
+    unfold: exports.unfold,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverseWithIndex: _traverseWithIndex,
+    extend: _extend,
+    wither: _wither,
+    wilt: _wilt
+};
+
+
+/***/ }),
+
+/***/ 8630:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.reduceRight = exports.foldMap = exports.reduce = exports.mapWithIndex = exports.map = exports.flatten = exports.duplicate = exports.extend = exports.flatMap = exports.ap = exports.alt = exports.altW = exports.of = exports.chunksOf = exports.splitAt = exports.chop = exports.chainWithIndex = exports.intersperse = exports.prependAll = exports.unzip = exports.zip = exports.zipWith = exports.modifyAt = exports.updateAt = exports.sort = exports.groupBy = exports.group = exports.reverse = exports.concat = exports.concatW = exports.fromArray = exports.unappend = exports.unprepend = exports.range = exports.replicate = exports.makeBy = exports.fromReadonlyArray = exports.rotate = exports.union = exports.sortBy = exports.uniq = exports.unsafeUpdateAt = exports.unsafeInsertAt = exports.append = exports.appendW = exports.prepend = exports.prependW = exports.isOutOfBound = exports.isNonEmpty = exports.empty = void 0;
+exports.groupSort = exports.chain = exports.intercalate = exports.updateLast = exports.modifyLast = exports.updateHead = exports.modifyHead = exports.matchRight = exports.matchLeft = exports.concatAll = exports.max = exports.min = exports.init = exports.last = exports.tail = exports.head = exports.apS = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.Comonad = exports.Alt = exports.TraversableWithIndex = exports.Traversable = exports.FoldableWithIndex = exports.Foldable = exports.Monad = exports.chainFirst = exports.Chain = exports.Applicative = exports.apSecond = exports.apFirst = exports.Apply = exports.FunctorWithIndex = exports.Pointed = exports.flap = exports.Functor = exports.getUnionSemigroup = exports.getEq = exports.getSemigroup = exports.getShow = exports.URI = exports.extract = exports.traverseWithIndex = exports.sequence = exports.traverse = exports.reduceRightWithIndex = exports.foldMapWithIndex = exports.reduceWithIndex = void 0;
+exports.readonlyNonEmptyArray = exports.fold = exports.prependToAll = exports.insertAt = exports.snoc = exports.cons = exports.unsnoc = exports.uncons = exports.filterWithIndex = exports.filter = void 0;
+var Apply_1 = __nccwpck_require__(205);
+var Chain_1 = __nccwpck_require__(2372);
+var Eq_1 = __nccwpck_require__(6964);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var Ord_1 = __nccwpck_require__(6685);
+var Se = __importStar(__nccwpck_require__(6339));
+// -------------------------------------------------------------------------------------
+// internal
+// -------------------------------------------------------------------------------------
+/**
+ * @internal
+ */
+exports.empty = _.emptyReadonlyArray;
+/**
+ * @internal
+ */
+exports.isNonEmpty = _.isNonEmpty;
+/**
+ * @internal
+ */
+var isOutOfBound = function (i, as) { return i < 0 || i >= as.length; };
+exports.isOutOfBound = isOutOfBound;
+/**
+ * @internal
+ */
+var prependW = function (head) {
+    return function (tail) {
+        return __spreadArray([head], tail, true);
+    };
+};
+exports.prependW = prependW;
+/**
+ * @internal
+ */
+exports.prepend = exports.prependW;
+/**
+ * @internal
+ */
+var appendW = function (end) {
+    return function (init) {
+        return __spreadArray(__spreadArray([], init, true), [end], false);
+    };
+};
+exports.appendW = appendW;
+/**
+ * @internal
+ */
+exports.append = exports.appendW;
+/**
+ * @internal
+ */
+var unsafeInsertAt = function (i, a, as) {
+    if ((0, exports.isNonEmpty)(as)) {
+        var xs = _.fromReadonlyNonEmptyArray(as);
+        xs.splice(i, 0, a);
+        return xs;
+    }
+    return [a];
+};
+exports.unsafeInsertAt = unsafeInsertAt;
+/**
+ * @internal
+ */
+var unsafeUpdateAt = function (i, a, as) {
+    if (as[i] === a) {
+        return as;
+    }
+    else {
+        var xs = _.fromReadonlyNonEmptyArray(as);
+        xs[i] = a;
+        return xs;
+    }
+};
+exports.unsafeUpdateAt = unsafeUpdateAt;
+/**
+ * Remove duplicates from a `ReadonlyNonEmptyArray`, keeping the first occurrence of an element.
+ *
+ * @example
+ * import { uniq } from 'fp-ts/ReadonlyNonEmptyArray'
+ * import * as N from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(uniq(N.Eq)([1, 2, 1]), [1, 2])
+ *
+ * @since 2.11.0
+ */
+var uniq = function (E) {
+    return function (as) {
+        if (as.length === 1) {
+            return as;
+        }
+        var out = [(0, exports.head)(as)];
+        var rest = (0, exports.tail)(as);
+        var _loop_1 = function (a) {
+            if (out.every(function (o) { return !E.equals(o, a); })) {
+                out.push(a);
+            }
+        };
+        for (var _i = 0, rest_1 = rest; _i < rest_1.length; _i++) {
+            var a = rest_1[_i];
+            _loop_1(a);
+        }
+        return out;
+    };
+};
+exports.uniq = uniq;
+/**
+ * Sort the elements of a `ReadonlyNonEmptyArray` in increasing order, where elements are compared using first `ords[0]`, then `ords[1]`,
+ * etc...
+ *
+ * @example
+ * import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray'
+ * import { contramap } from 'fp-ts/Ord'
+ * import * as S from 'fp-ts/string'
+ * import * as N from 'fp-ts/number'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * interface Person {
+ *   name: string
+ *   age: number
+ * }
+ *
+ * const byName = pipe(S.Ord, contramap((p: Person) => p.name))
+ *
+ * const byAge = pipe(N.Ord, contramap((p: Person) => p.age))
+ *
+ * const sortByNameByAge = RNEA.sortBy([byName, byAge])
+ *
+ * const persons: RNEA.ReadonlyNonEmptyArray<Person> = [
+ *   { name: 'a', age: 1 },
+ *   { name: 'b', age: 3 },
+ *   { name: 'c', age: 2 },
+ *   { name: 'b', age: 2 }
+ * ]
+ *
+ * assert.deepStrictEqual(sortByNameByAge(persons), [
+ *   { name: 'a', age: 1 },
+ *   { name: 'b', age: 2 },
+ *   { name: 'b', age: 3 },
+ *   { name: 'c', age: 2 }
+ * ])
+ *
+ * @since 2.11.0
+ */
+var sortBy = function (ords) {
+    if ((0, exports.isNonEmpty)(ords)) {
+        var M = (0, Ord_1.getMonoid)();
+        return (0, exports.sort)(ords.reduce(M.concat, M.empty));
+    }
+    return function_1.identity;
+};
+exports.sortBy = sortBy;
+/**
+ * @since 2.11.0
+ */
+var union = function (E) {
+    var uniqE = (0, exports.uniq)(E);
+    return function (second) { return function (first) { return uniqE((0, function_1.pipe)(first, concat(second))); }; };
+};
+exports.union = union;
+/**
+ * Rotate a `ReadonlyNonEmptyArray` by `n` steps.
+ *
+ * @example
+ * import { rotate } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(rotate(2)([1, 2, 3, 4, 5]), [4, 5, 1, 2, 3])
+ * assert.deepStrictEqual(rotate(-2)([1, 2, 3, 4, 5]), [3, 4, 5, 1, 2])
+ *
+ * @since 2.11.0
+ */
+var rotate = function (n) {
+    return function (as) {
+        var len = as.length;
+        var m = Math.round(n) % len;
+        if ((0, exports.isOutOfBound)(Math.abs(m), as) || m === 0) {
+            return as;
+        }
+        if (m < 0) {
+            var _a = (0, exports.splitAt)(-m)(as), f = _a[0], s = _a[1];
+            return (0, function_1.pipe)(s, concat(f));
+        }
+        else {
+            return (0, exports.rotate)(m - len)(as);
+        }
+    };
+};
+exports.rotate = rotate;
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * Return a `ReadonlyNonEmptyArray` from a `ReadonlyArray` returning `none` if the input is empty.
+ *
+ * @category conversions
+ * @since 2.5.0
+ */
+var fromReadonlyArray = function (as) {
+    return (0, exports.isNonEmpty)(as) ? _.some(as) : _.none;
+};
+exports.fromReadonlyArray = fromReadonlyArray;
+/**
+ * Return a `ReadonlyNonEmptyArray` of length `n` with element `i` initialized with `f(i)`.
+ *
+ * **Note**. `n` is normalized to a natural number.
+ *
+ * @example
+ * import { makeBy } from 'fp-ts/ReadonlyNonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const double = (n: number): number => n * 2
+ * assert.deepStrictEqual(pipe(5, makeBy(double)), [0, 2, 4, 6, 8])
+ *
+ * @category constructors
+ * @since 2.11.0
+ */
+var makeBy = function (f) {
+    return function (n) {
+        var j = Math.max(0, Math.floor(n));
+        var out = [f(0)];
+        for (var i = 1; i < j; i++) {
+            out.push(f(i));
+        }
+        return out;
+    };
+};
+exports.makeBy = makeBy;
+/**
+ * Create a `ReadonlyNonEmptyArray` containing a value repeated the specified number of times.
+ *
+ * **Note**. `n` is normalized to a natural number.
+ *
+ * @example
+ * import { replicate } from 'fp-ts/ReadonlyNonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(pipe(3, replicate('a')), ['a', 'a', 'a'])
+ *
+ * @category constructors
+ * @since 2.11.0
+ */
+var replicate = function (a) { return (0, exports.makeBy)(function () { return a; }); };
+exports.replicate = replicate;
+/**
+ * Create a `ReadonlyNonEmptyArray` containing a range of integers, including both endpoints.
+ *
+ * @example
+ * import { range } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(range(1, 5), [1, 2, 3, 4, 5])
+ *
+ * @category constructors
+ * @since 2.11.0
+ */
+var range = function (start, end) {
+    return start <= end ? (0, exports.makeBy)(function (i) { return start + i; })(end - start + 1) : [start];
+};
+exports.range = range;
+/**
+ * Return the tuple of the `head` and the `tail`.
+ *
+ * @example
+ * import { unprepend } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(unprepend([1, 2, 3, 4]), [1, [2, 3, 4]])
+ *
+ * @since 2.9.0
+ */
+var unprepend = function (as) { return [(0, exports.head)(as), (0, exports.tail)(as)]; };
+exports.unprepend = unprepend;
+/**
+ * Return the tuple of the `init` and the `last`.
+ *
+ * @example
+ * import { unappend } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(unappend([1, 2, 3, 4]), [[1, 2, 3], 4])
+ *
+ * @since 2.9.0
+ */
+var unappend = function (as) { return [(0, exports.init)(as), (0, exports.last)(as)]; };
+exports.unappend = unappend;
+/**
+ * @category conversions
+ * @since 2.5.0
+ */
+var fromArray = function (as) { return (0, exports.fromReadonlyArray)(as.slice()); };
+exports.fromArray = fromArray;
+function concatW(second) {
+    return function (first) { return first.concat(second); };
+}
+exports.concatW = concatW;
+function concat(x, y) {
+    return y ? x.concat(y) : function (y) { return y.concat(x); };
+}
+exports.concat = concat;
+/**
+ * @since 2.5.0
+ */
+var reverse = function (as) {
+    return as.length === 1 ? as : __spreadArray([(0, exports.last)(as)], as.slice(0, -1).reverse(), true);
+};
+exports.reverse = reverse;
+function group(E) {
+    return function (as) {
+        var len = as.length;
+        if (len === 0) {
+            return exports.empty;
+        }
+        var out = [];
+        var head = as[0];
+        var nea = [head];
+        for (var i = 1; i < len; i++) {
+            var a = as[i];
+            if (E.equals(a, head)) {
+                nea.push(a);
+            }
+            else {
+                out.push(nea);
+                head = a;
+                nea = [head];
+            }
+        }
+        out.push(nea);
+        return out;
+    };
+}
+exports.group = group;
+/**
+ * Splits an array into sub-non-empty-arrays stored in an object, based on the result of calling a `string`-returning
+ * function on each element, and grouping the results according to values returned
+ *
+ * @example
+ * import { groupBy } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(groupBy((s: string) => String(s.length))(['a', 'b', 'ab']), {
+ *   '1': ['a', 'b'],
+ *   '2': ['ab']
+ * })
+ *
+ * @since 2.5.0
+ */
+var groupBy = function (f) {
+    return function (as) {
+        var out = {};
+        for (var _i = 0, as_1 = as; _i < as_1.length; _i++) {
+            var a = as_1[_i];
+            var k = f(a);
+            if (_.has.call(out, k)) {
+                out[k].push(a);
+            }
+            else {
+                out[k] = [a];
+            }
+        }
+        return out;
+    };
+};
+exports.groupBy = groupBy;
+/**
+ * @since 2.5.0
+ */
+var sort = function (O) {
+    return function (as) {
+        return as.length === 1 ? as : as.slice().sort(O.compare);
+    };
+};
+exports.sort = sort;
+/**
+ * @since 2.5.0
+ */
+var updateAt = function (i, a) {
+    return (0, exports.modifyAt)(i, function () { return a; });
+};
+exports.updateAt = updateAt;
+/**
+ * @since 2.5.0
+ */
+var modifyAt = function (i, f) {
+    return function (as) {
+        return (0, exports.isOutOfBound)(i, as) ? _.none : _.some((0, exports.unsafeUpdateAt)(i, f(as[i]), as));
+    };
+};
+exports.modifyAt = modifyAt;
+/**
+ * @since 2.5.1
+ */
+var zipWith = function (as, bs, f) {
+    var cs = [f(as[0], bs[0])];
+    var len = Math.min(as.length, bs.length);
+    for (var i = 1; i < len; i++) {
+        cs[i] = f(as[i], bs[i]);
+    }
+    return cs;
+};
+exports.zipWith = zipWith;
+function zip(as, bs) {
+    if (bs === undefined) {
+        return function (bs) { return zip(bs, as); };
+    }
+    return (0, exports.zipWith)(as, bs, function (a, b) { return [a, b]; });
+}
+exports.zip = zip;
+/**
+ * @since 2.5.1
+ */
+var unzip = function (abs) {
+    var fa = [abs[0][0]];
+    var fb = [abs[0][1]];
+    for (var i = 1; i < abs.length; i++) {
+        fa[i] = abs[i][0];
+        fb[i] = abs[i][1];
+    }
+    return [fa, fb];
+};
+exports.unzip = unzip;
+/**
+ * Prepend an element to every member of a `ReadonlyNonEmptyArray`.
+ *
+ * @example
+ * import { prependAll } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(prependAll(9)([1, 2, 3, 4]), [9, 1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.10.0
+ */
+var prependAll = function (middle) {
+    return function (as) {
+        var out = [middle, as[0]];
+        for (var i = 1; i < as.length; i++) {
+            out.push(middle, as[i]);
+        }
+        return out;
+    };
+};
+exports.prependAll = prependAll;
+/**
+ * Places an element in between members of a `ReadonlyNonEmptyArray`.
+ *
+ * @example
+ * import { intersperse } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(intersperse(9)([1, 2, 3, 4]), [1, 9, 2, 9, 3, 9, 4])
+ *
+ * @since 2.9.0
+ */
+var intersperse = function (middle) {
+    return function (as) {
+        var rest = (0, exports.tail)(as);
+        return (0, exports.isNonEmpty)(rest) ? (0, function_1.pipe)(rest, (0, exports.prependAll)(middle), (0, exports.prepend)((0, exports.head)(as))) : as;
+    };
+};
+exports.intersperse = intersperse;
+/**
+ * @category sequencing
+ * @since 2.10.0
+ */
+var chainWithIndex = function (f) {
+    return function (as) {
+        var out = _.fromReadonlyNonEmptyArray(f(0, (0, exports.head)(as)));
+        for (var i = 1; i < as.length; i++) {
+            out.push.apply(out, f(i, as[i]));
+        }
+        return out;
+    };
+};
+exports.chainWithIndex = chainWithIndex;
+/**
+ * A useful recursion pattern for processing a `ReadonlyNonEmptyArray` to produce a new `ReadonlyNonEmptyArray`, often used for "chopping" up the input
+ * `ReadonlyNonEmptyArray`. Typically `chop` is called with some function that will consume an initial prefix of the `ReadonlyNonEmptyArray` and produce a
+ * value and the tail of the `ReadonlyNonEmptyArray`.
+ *
+ * @since 2.10.0
+ */
+var chop = function (f) {
+    return function (as) {
+        var _a = f(as), b = _a[0], rest = _a[1];
+        var out = [b];
+        var next = rest;
+        while ((0, exports.isNonEmpty)(next)) {
+            var _b = f(next), b_1 = _b[0], rest_2 = _b[1];
+            out.push(b_1);
+            next = rest_2;
+        }
+        return out;
+    };
+};
+exports.chop = chop;
+/**
+ * Splits a `ReadonlyNonEmptyArray` into two pieces, the first piece has max `n` elements.
+ *
+ * @since 2.10.0
+ */
+var splitAt = function (n) {
+    return function (as) {
+        var m = Math.max(1, n);
+        return m >= as.length ? [as, exports.empty] : [(0, function_1.pipe)(as.slice(1, m), (0, exports.prepend)((0, exports.head)(as))), as.slice(m)];
+    };
+};
+exports.splitAt = splitAt;
+/**
+ * Splits a `ReadonlyNonEmptyArray` into length-`n` pieces. The last piece will be shorter if `n` does not evenly divide the length of
+ * the `ReadonlyNonEmptyArray`.
+ *
+ * @since 2.10.0
+ */
+var chunksOf = function (n) { return (0, exports.chop)((0, exports.splitAt)(n)); };
+exports.chunksOf = chunksOf;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+/* istanbul ignore next */
+var _mapWithIndex = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.mapWithIndex)(f)); };
+var _ap = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+/* istanbul ignore next */
+var _extend = function (wa, f) { return (0, function_1.pipe)(wa, (0, exports.extend)(f)); };
+/* istanbul ignore next */
+var _reduce = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduce)(b, f)); };
+/* istanbul ignore next */
+var _foldMap = function (M) {
+    var foldMapM = (0, exports.foldMap)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapM(f)); };
+};
+/* istanbul ignore next */
+var _reduceRight = function (fa, b, f) { return (0, function_1.pipe)(fa, (0, exports.reduceRight)(b, f)); };
+/* istanbul ignore next */
+var _traverse = function (F) {
+    var traverseF = (0, exports.traverse)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseF(f)); };
+};
+/* istanbul ignore next */
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+/* istanbul ignore next */
+var _reduceWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceWithIndex)(b, f));
+};
+/* istanbul ignore next */
+var _foldMapWithIndex = function (M) {
+    var foldMapWithIndexM = (0, exports.foldMapWithIndex)(M);
+    return function (fa, f) { return (0, function_1.pipe)(fa, foldMapWithIndexM(f)); };
+};
+/* istanbul ignore next */
+var _reduceRightWithIndex = function (fa, b, f) {
+    return (0, function_1.pipe)(fa, (0, exports.reduceRightWithIndex)(b, f));
+};
+/* istanbul ignore next */
+var _traverseWithIndex = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (ta, f) { return (0, function_1.pipe)(ta, traverseWithIndexF(f)); };
+};
+/**
+ * @category constructors
+ * @since 2.5.0
+ */
+exports.of = _.singleton;
+/**
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @example
+ * import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3] as RNEA.ReadonlyNonEmptyArray<number>,
+ *     RNEA.altW(() => ['a', 'b'])
+ *   ),
+ *   [1, 2, 3, 'a', 'b']
+ * )
+ *
+ * @category error handling
+ * @since 2.9.0
+ */
+var altW = function (that) {
+    return function (as) {
+        return (0, function_1.pipe)(as, concatW(that()));
+    };
+};
+exports.altW = altW;
+/**
+ * Identifies an associative operation on a type constructor. It is similar to `Semigroup`, except that it applies to
+ * types of kind `* -> *`.
+ *
+ * In case of `ReadonlyNonEmptyArray` concatenates the inputs into a single array.
+ *
+ * @example
+ * import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RNEA.alt(() => [4, 5])
+ *   ),
+ *   [1, 2, 3, 4, 5]
+ * )
+ *
+ * @category error handling
+ * @since 2.6.2
+ */
+exports.alt = exports.altW;
+/**
+ * @since 2.5.0
+ */
+var ap = function (as) { return (0, exports.flatMap)(function (f) { return (0, function_1.pipe)(as, (0, exports.map)(f)); }); };
+exports.ap = ap;
+/**
+ * @example
+ * import * as RNEA from 'fp-ts/ReadonlyNonEmptyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RNEA.flatMap((n) => [`a${n}`, `b${n}`])
+ *   ),
+ *   ['a1', 'b1', 'a2', 'b2', 'a3', 'b3']
+ * )
+ *
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) {
+    return (0, function_1.pipe)(ma, (0, exports.chainWithIndex)(function (i, a) { return f(a, i); }));
+});
+/**
+ * @since 2.5.0
+ */
+var extend = function (f) {
+    return function (as) {
+        var next = (0, exports.tail)(as);
+        var out = [f(as)];
+        while ((0, exports.isNonEmpty)(next)) {
+            out.push(f(next));
+            next = (0, exports.tail)(next);
+        }
+        return out;
+    };
+};
+exports.extend = extend;
+/**
+ * @since 2.5.0
+ */
+exports.duplicate = 
+/*#__PURE__*/ (0, exports.extend)(function_1.identity);
+/**
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.flatten = 
+/*#__PURE__*/ (0, exports.flatMap)(function_1.identity);
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: F<A>) => F<B>` whose argument and return types
+ * use the type constructor `F` to represent some computational context.
+ *
+ * @category mapping
+ * @since 2.5.0
+ */
+var map = function (f) {
+    return (0, exports.mapWithIndex)(function (_, a) { return f(a); });
+};
+exports.map = map;
+/**
+ * @category mapping
+ * @since 2.5.0
+ */
+var mapWithIndex = function (f) {
+    return function (as) {
+        var out = [f(0, (0, exports.head)(as))];
+        for (var i = 1; i < as.length; i++) {
+            out.push(f(i, as[i]));
+        }
+        return out;
+    };
+};
+exports.mapWithIndex = mapWithIndex;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduce = function (b, f) {
+    return (0, exports.reduceWithIndex)(b, function (_, b, a) { return f(b, a); });
+};
+exports.reduce = reduce;
+/**
+ * **Note**. The constraint is relaxed: a `Semigroup` instead of a `Monoid`.
+ *
+ * @category folding
+ * @since 2.5.0
+ */
+var foldMap = function (S) {
+    return function (f) {
+        return function (as) {
+            return as.slice(1).reduce(function (s, a) { return S.concat(s, f(a)); }, f(as[0]));
+        };
+    };
+};
+exports.foldMap = foldMap;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduceRight = function (b, f) {
+    return (0, exports.reduceRightWithIndex)(b, function (_, b, a) { return f(b, a); });
+};
+exports.reduceRight = reduceRight;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduceWithIndex = function (b, f) {
+    return function (as) {
+        return as.reduce(function (b, a, i) { return f(i, b, a); }, b);
+    };
+};
+exports.reduceWithIndex = reduceWithIndex;
+/**
+ * **Note**. The constraint is relaxed: a `Semigroup` instead of a `Monoid`.
+ *
+ * @category folding
+ * @since 2.5.0
+ */
+var foldMapWithIndex = function (S) {
+    return function (f) {
+        return function (as) {
+            return as.slice(1).reduce(function (s, a, i) { return S.concat(s, f(i + 1, a)); }, f(0, as[0]));
+        };
+    };
+};
+exports.foldMapWithIndex = foldMapWithIndex;
+/**
+ * @category folding
+ * @since 2.5.0
+ */
+var reduceRightWithIndex = function (b, f) {
+    return function (as) {
+        return as.reduceRight(function (b, a, i) { return f(i, a, b); }, b);
+    };
+};
+exports.reduceRightWithIndex = reduceRightWithIndex;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var traverse = function (F) {
+    var traverseWithIndexF = (0, exports.traverseWithIndex)(F);
+    return function (f) { return traverseWithIndexF(function (_, a) { return f(a); }); };
+};
+exports.traverse = traverse;
+/**
+ * @category traversing
+ * @since 2.6.3
+ */
+var sequence = function (F) { return (0, exports.traverseWithIndex)(F)(function_1.SK); };
+exports.sequence = sequence;
+/**
+ * @category sequencing
+ * @since 2.6.3
+ */
+var traverseWithIndex = function (F) {
+    return function (f) {
+        return function (as) {
+            var out = F.map(f(0, (0, exports.head)(as)), exports.of);
+            for (var i = 1; i < as.length; i++) {
+                out = F.ap(F.map(out, function (bs) { return function (b) { return (0, function_1.pipe)(bs, (0, exports.append)(b)); }; }), f(i, as[i]));
+            }
+            return out;
+        };
+    };
+};
+exports.traverseWithIndex = traverseWithIndex;
+/**
+ * @category Comonad
+ * @since 2.6.3
+ */
+exports.extract = _.head;
+/**
+ * @category type lambdas
+ * @since 2.5.0
+ */
+exports.URI = 'ReadonlyNonEmptyArray';
+/**
+ * @category instances
+ * @since 2.5.0
+ */
+var getShow = function (S) { return ({
+    show: function (as) { return "[".concat(as.map(S.show).join(', '), "]"); }
+}); };
+exports.getShow = getShow;
+/**
+ * Builds a `Semigroup` instance for `ReadonlyNonEmptyArray`
+ *
+ * @category instances
+ * @since 2.5.0
+ */
+var getSemigroup = function () { return ({
+    concat: concat
+}); };
+exports.getSemigroup = getSemigroup;
+/**
+ * @example
+ * import { getEq } from 'fp-ts/ReadonlyNonEmptyArray'
+ * import * as N from 'fp-ts/number'
+ *
+ * const E = getEq(N.Eq)
+ * assert.strictEqual(E.equals([1, 2], [1, 2]), true)
+ * assert.strictEqual(E.equals([1, 2], [1, 3]), false)
+ *
+ * @category instances
+ * @since 2.5.0
+ */
+var getEq = function (E) {
+    return (0, Eq_1.fromEquals)(function (xs, ys) { return xs.length === ys.length && xs.every(function (x, i) { return E.equals(x, ys[i]); }); });
+};
+exports.getEq = getEq;
+/**
+ * @since 2.11.0
+ */
+var getUnionSemigroup = function (E) {
+    var unionE = (0, exports.union)(E);
+    return {
+        concat: function (first, second) { return unionE(second)(first); }
+    };
+};
+exports.getUnionSemigroup = getUnionSemigroup;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FunctorWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Apply = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap
+};
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.5.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.Apply);
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.5.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.Apply);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Applicative = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    chain: exports.flatMap
+};
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * assert.deepStrictEqual(
+ *   pipe(
+ *     [1, 2, 3],
+ *     RA.chainFirst(() => ['a', 'b'])
+ *   ),
+ *   [1, 1, 2, 2, 3, 3]
+ * )
+ *
+ * @category sequencing
+ * @since 2.5.0
+ */
+exports.chainFirst = (0, Chain_1.chainFirst)(exports.Chain);
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _ap,
+    of: exports.of,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Foldable = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.FoldableWithIndex = {
+    URI: exports.URI,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Traversable = {
+    URI: exports.URI,
+    map: _map,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.TraversableWithIndex = {
+    URI: exports.URI,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverseWithIndex: _traverseWithIndex
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Comonad = {
+    URI: exports.URI,
+    map: _map,
+    extend: _extend,
+    extract: exports.extract
+};
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = (0, Chain_1.bind)(exports.Chain);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.Apply);
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.5.0
+ */
+exports.head = exports.extract;
+/**
+ * @since 2.5.0
+ */
+exports.tail = _.tail;
+/**
+ * @since 2.5.0
+ */
+var last = function (as) { return as[as.length - 1]; };
+exports.last = last;
+/**
+ * Get all but the last element of a non empty array, creating a new array.
+ *
+ * @example
+ * import { init } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(init([1, 2, 3]), [1, 2])
+ * assert.deepStrictEqual(init([1]), [])
+ *
+ * @since 2.5.0
+ */
+var init = function (as) { return as.slice(0, -1); };
+exports.init = init;
+/**
+ * @since 2.5.0
+ */
+var min = function (O) {
+    var S = Se.min(O);
+    return function (as) { return as.reduce(S.concat); };
+};
+exports.min = min;
+/**
+ * @since 2.5.0
+ */
+var max = function (O) {
+    var S = Se.max(O);
+    return function (as) { return as.reduce(S.concat); };
+};
+exports.max = max;
+/**
+ * @since 2.10.0
+ */
+var concatAll = function (S) {
+    return function (as) {
+        return as.reduce(S.concat);
+    };
+};
+exports.concatAll = concatAll;
+/**
+ * Break a `ReadonlyArray` into its first element and remaining elements.
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchLeft = function (f) {
+    return function (as) {
+        return f((0, exports.head)(as), (0, exports.tail)(as));
+    };
+};
+exports.matchLeft = matchLeft;
+/**
+ * Break a `ReadonlyArray` into its initial elements and the last element.
+ *
+ * @category pattern matching
+ * @since 2.11.0
+ */
+var matchRight = function (f) {
+    return function (as) {
+        return f((0, exports.init)(as), (0, exports.last)(as));
+    };
+};
+exports.matchRight = matchRight;
+/**
+ * Apply a function to the head, creating a new `ReadonlyNonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var modifyHead = function (f) {
+    return function (as) {
+        return __spreadArray([f((0, exports.head)(as))], (0, exports.tail)(as), true);
+    };
+};
+exports.modifyHead = modifyHead;
+/**
+ * Change the head, creating a new `ReadonlyNonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var updateHead = function (a) { return (0, exports.modifyHead)(function () { return a; }); };
+exports.updateHead = updateHead;
+/**
+ * Apply a function to the last element, creating a new `ReadonlyNonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var modifyLast = function (f) {
+    return function (as) {
+        return (0, function_1.pipe)((0, exports.init)(as), (0, exports.append)(f((0, exports.last)(as))));
+    };
+};
+exports.modifyLast = modifyLast;
+/**
+ * Change the last element, creating a new `ReadonlyNonEmptyArray`.
+ *
+ * @since 2.11.0
+ */
+var updateLast = function (a) { return (0, exports.modifyLast)(function () { return a; }); };
+exports.updateLast = updateLast;
+/**
+ * Places an element in between members of a `ReadonlyNonEmptyArray`, then folds the results using the provided `Semigroup`.
+ *
+ * @example
+ * import * as S from 'fp-ts/string'
+ * import { intercalate } from 'fp-ts/ReadonlyNonEmptyArray'
+ *
+ * assert.deepStrictEqual(intercalate(S.Semigroup)('-')(['a', 'b', 'c']), 'a-b-c')
+ *
+ * @since 2.12.0
+ */
+var intercalate = function (S) {
+    var concatAllS = (0, exports.concatAll)(S);
+    return function (middle) { return (0, function_1.flow)((0, exports.intersperse)(middle), concatAllS); };
+};
+exports.intercalate = intercalate;
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.5.0
+ */
+exports.chain = exports.flatMap;
+function groupSort(O) {
+    var sortO = (0, exports.sort)(O);
+    var groupO = group(O);
+    return function (as) { return ((0, exports.isNonEmpty)(as) ? groupO(sortO(as)) : exports.empty); };
+}
+exports.groupSort = groupSort;
+function filter(predicate) {
+    return (0, exports.filterWithIndex)(function (_, a) { return predicate(a); });
+}
+exports.filter = filter;
+/**
+ * Use [`filterWithIndex`](./ReadonlyArray.ts.html#filterwithindex) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+var filterWithIndex = function (predicate) {
+    return function (as) {
+        return (0, exports.fromReadonlyArray)(as.filter(function (a, i) { return predicate(i, a); }));
+    };
+};
+exports.filterWithIndex = filterWithIndex;
+/**
+ * Use [`unprepend`](#unprepend) instead.
+ *
+ * @category zone of death
+ * @since 2.10.0
+ * @deprecated
+ */
+exports.uncons = exports.unprepend;
+/**
+ * Use [`unappend`](#unappend) instead.
+ *
+ * @category zone of death
+ * @since 2.10.0
+ * @deprecated
+ */
+exports.unsnoc = exports.unappend;
+function cons(head, tail) {
+    return tail === undefined ? (0, exports.prepend)(head) : (0, function_1.pipe)(tail, (0, exports.prepend)(head));
+}
+exports.cons = cons;
+/**
+ * Use [`append`](./ReadonlyArray.ts.html#append) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+var snoc = function (init, end) { return (0, function_1.pipe)(init, concat([end])); };
+exports.snoc = snoc;
+/**
+ * Use [`insertAt`](./ReadonlyArray.ts.html#insertat) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+var insertAt = function (i, a) {
+    return function (as) {
+        return i < 0 || i > as.length ? _.none : _.some((0, exports.unsafeInsertAt)(i, a, as));
+    };
+};
+exports.insertAt = insertAt;
+/**
+ * Use [`prependAll`](#prependall) instead.
+ *
+ * @category zone of death
+ * @since 2.9.0
+ * @deprecated
+ */
+exports.prependToAll = exports.prependAll;
+/**
+ * Use [`concatAll`](#concatall) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.fold = exports.concatAll;
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `RNEA.Functor` instead of `RNEA.readonlyNonEmptyArray`
+ * (where `RNEA` is from `import RNEA from 'fp-ts/ReadonlyNonEmptyArray'`)
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.readonlyNonEmptyArray = {
+    URI: exports.URI,
+    of: exports.of,
+    map: _map,
+    mapWithIndex: _mapWithIndex,
+    ap: _ap,
+    chain: exports.flatMap,
+    extend: _extend,
+    extract: exports.extract,
+    reduce: _reduce,
+    foldMap: _foldMap,
+    reduceRight: _reduceRight,
+    traverse: _traverse,
+    sequence: exports.sequence,
+    reduceWithIndex: _reduceWithIndex,
+    foldMapWithIndex: _foldMapWithIndex,
+    reduceRightWithIndex: _reduceRightWithIndex,
+    traverseWithIndex: _traverseWithIndex,
+    alt: _alt
+};
+
+
+/***/ }),
+
+/***/ 6339:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.semigroupProduct = exports.semigroupSum = exports.semigroupString = exports.getFunctionSemigroup = exports.semigroupAny = exports.semigroupAll = exports.fold = exports.getIntercalateSemigroup = exports.getMeetSemigroup = exports.getJoinSemigroup = exports.getDualSemigroup = exports.getStructSemigroup = exports.getTupleSemigroup = exports.getFirstSemigroup = exports.getLastSemigroup = exports.getObjectSemigroup = exports.semigroupVoid = exports.concatAll = exports.last = exports.first = exports.intercalate = exports.tuple = exports.struct = exports.reverse = exports.constant = exports.max = exports.min = void 0;
+/**
+ * If a type `A` can form a `Semigroup` it has an **associative** binary operation.
+ *
+ * ```ts
+ * interface Semigroup<A> {
+ *   readonly concat: (x: A, y: A) => A
+ * }
+ * ```
+ *
+ * Associativity means the following equality must hold for any choice of `x`, `y`, and `z`.
+ *
+ * ```ts
+ * concat(x, concat(y, z)) = concat(concat(x, y), z)
+ * ```
+ *
+ * A common example of a semigroup is the type `string` with the operation `+`.
+ *
+ * ```ts
+ * import { Semigroup } from 'fp-ts/Semigroup'
+ *
+ * const semigroupString: Semigroup<string> = {
+ *   concat: (x, y) => x + y
+ * }
+ *
+ * const x = 'x'
+ * const y = 'y'
+ * const z = 'z'
+ *
+ * semigroupString.concat(x, y) // 'xy'
+ *
+ * semigroupString.concat(x, semigroupString.concat(y, z)) // 'xyz'
+ *
+ * semigroupString.concat(semigroupString.concat(x, y), z) // 'xyz'
+ * ```
+ *
+ * *Adapted from https://typelevel.org/cats*
+ *
+ * @since 2.0.0
+ */
+var function_1 = __nccwpck_require__(6985);
+var _ = __importStar(__nccwpck_require__(1840));
+var M = __importStar(__nccwpck_require__(179));
+var Or = __importStar(__nccwpck_require__(6685));
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * Get a semigroup where `concat` will return the minimum, based on the provided order.
+ *
+ * @example
+ * import * as N from 'fp-ts/number'
+ * import * as S from 'fp-ts/Semigroup'
+ *
+ * const S1 = S.min(N.Ord)
+ *
+ * assert.deepStrictEqual(S1.concat(1, 2), 1)
+ *
+ * @category constructors
+ * @since 2.10.0
+ */
+var min = function (O) { return ({
+    concat: Or.min(O)
+}); };
+exports.min = min;
+/**
+ * Get a semigroup where `concat` will return the maximum, based on the provided order.
+ *
+ * @example
+ * import * as N from 'fp-ts/number'
+ * import * as S from 'fp-ts/Semigroup'
+ *
+ * const S1 = S.max(N.Ord)
+ *
+ * assert.deepStrictEqual(S1.concat(1, 2), 2)
+ *
+ * @category constructors
+ * @since 2.10.0
+ */
+var max = function (O) { return ({
+    concat: Or.max(O)
+}); };
+exports.max = max;
+/**
+ * @category constructors
+ * @since 2.10.0
+ */
+var constant = function (a) { return ({
+    concat: function () { return a; }
+}); };
+exports.constant = constant;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * The dual of a `Semigroup`, obtained by swapping the arguments of `concat`.
+ *
+ * @example
+ * import { reverse } from 'fp-ts/Semigroup'
+ * import * as S from 'fp-ts/string'
+ *
+ * assert.deepStrictEqual(reverse(S.Semigroup).concat('a', 'b'), 'ba')
+ *
+ * @since 2.10.0
+ */
+exports.reverse = M.reverse;
+/**
+ * Given a struct of semigroups returns a semigroup for the struct.
+ *
+ * @example
+ * import { struct } from 'fp-ts/Semigroup'
+ * import * as N from 'fp-ts/number'
+ *
+ * interface Point {
+ *   readonly x: number
+ *   readonly y: number
+ * }
+ *
+ * const S = struct<Point>({
+ *   x: N.SemigroupSum,
+ *   y: N.SemigroupSum
+ * })
+ *
+ * assert.deepStrictEqual(S.concat({ x: 1, y: 2 }, { x: 3, y: 4 }), { x: 4, y: 6 })
+ *
+ * @since 2.10.0
+ */
+var struct = function (semigroups) { return ({
+    concat: function (first, second) {
+        var r = {};
+        for (var k in semigroups) {
+            if (_.has.call(semigroups, k)) {
+                r[k] = semigroups[k].concat(first[k], second[k]);
+            }
+        }
+        return r;
+    }
+}); };
+exports.struct = struct;
+/**
+ * Given a tuple of semigroups returns a semigroup for the tuple.
+ *
+ * @example
+ * import { tuple } from 'fp-ts/Semigroup'
+ * import * as B from 'fp-ts/boolean'
+ * import * as N from 'fp-ts/number'
+ * import * as S from 'fp-ts/string'
+ *
+ * const S1 = tuple(S.Semigroup, N.SemigroupSum)
+ * assert.deepStrictEqual(S1.concat(['a', 1], ['b', 2]), ['ab', 3])
+ *
+ * const S2 = tuple(S.Semigroup, N.SemigroupSum, B.SemigroupAll)
+ * assert.deepStrictEqual(S2.concat(['a', 1, true], ['b', 2, false]), ['ab', 3, false])
+ *
+ * @since 2.10.0
+ */
+var tuple = function () {
+    var semigroups = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        semigroups[_i] = arguments[_i];
+    }
+    return ({
+        concat: function (first, second) { return semigroups.map(function (s, i) { return s.concat(first[i], second[i]); }); }
+    });
+};
+exports.tuple = tuple;
+/**
+ * Between each pair of elements insert `middle`.
+ *
+ * @example
+ * import { intercalate } from 'fp-ts/Semigroup'
+ * import * as S from 'fp-ts/string'
+ * import { pipe } from 'fp-ts/function'
+ *
+ * const S1 = pipe(S.Semigroup, intercalate(' + '))
+ *
+ * assert.strictEqual(S1.concat('a', 'b'), 'a + b')
+ *
+ * @since 2.10.0
+ */
+var intercalate = function (middle) {
+    return function (S) { return ({
+        concat: function (x, y) { return S.concat(x, S.concat(middle, y)); }
+    }); };
+};
+exports.intercalate = intercalate;
+// -------------------------------------------------------------------------------------
+// instances
+// -------------------------------------------------------------------------------------
+/**
+ * Always return the first argument.
+ *
+ * @example
+ * import * as S from 'fp-ts/Semigroup'
+ *
+ * assert.deepStrictEqual(S.first<number>().concat(1, 2), 1)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+var first = function () { return ({ concat: function_1.identity }); };
+exports.first = first;
+/**
+ * Always return the last argument.
+ *
+ * @example
+ * import * as S from 'fp-ts/Semigroup'
+ *
+ * assert.deepStrictEqual(S.last<number>().concat(1, 2), 2)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+var last = function () { return ({ concat: function (_, y) { return y; } }); };
+exports.last = last;
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * Given a sequence of `as`, concat them and return the total.
+ *
+ * If `as` is empty, return the provided `startWith` value.
+ *
+ * @example
+ * import { concatAll } from 'fp-ts/Semigroup'
+ * import * as N from 'fp-ts/number'
+ *
+ * const sum = concatAll(N.SemigroupSum)(0)
+ *
+ * assert.deepStrictEqual(sum([1, 2, 3]), 6)
+ * assert.deepStrictEqual(sum([]), 0)
+ *
+ * @since 2.10.0
+ */
+exports.concatAll = M.concatAll;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * Use `void` module instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.semigroupVoid = (0, exports.constant)(undefined);
+/**
+ * Use [`getAssignSemigroup`](./struct.ts.html#getAssignSemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var getObjectSemigroup = function () { return ({
+    concat: function (first, second) { return Object.assign({}, first, second); }
+}); };
+exports.getObjectSemigroup = getObjectSemigroup;
+/**
+ * Use [`last`](#last) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getLastSemigroup = exports.last;
+/**
+ * Use [`first`](#first) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getFirstSemigroup = exports.first;
+/**
+ * Use [`tuple`](#tuple) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getTupleSemigroup = exports.tuple;
+/**
+ * Use [`struct`](#struct) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getStructSemigroup = exports.struct;
+/**
+ * Use [`reverse`](#reverse) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getDualSemigroup = exports.reverse;
+/**
+ * Use [`max`](#max) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getJoinSemigroup = exports.max;
+/**
+ * Use [`min`](#min) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getMeetSemigroup = exports.min;
+/**
+ * Use [`intercalate`](#intercalate) instead.
+ *
+ * @category zone of death
+ * @since 2.5.0
+ * @deprecated
+ */
+exports.getIntercalateSemigroup = exports.intercalate;
+function fold(S) {
+    var concatAllS = (0, exports.concatAll)(S);
+    return function (startWith, as) { return (as === undefined ? concatAllS(startWith) : concatAllS(startWith)(as)); };
+}
+exports.fold = fold;
+/**
+ * Use [`SemigroupAll`](./boolean.ts.html#SemigroupAll) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.semigroupAll = {
+    concat: function (x, y) { return x && y; }
+};
+/**
+ * Use [`SemigroupAny`](./boolean.ts.html#SemigroupAny) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.semigroupAny = {
+    concat: function (x, y) { return x || y; }
+};
+/**
+ * Use [`getSemigroup`](./function.ts.html#getSemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getFunctionSemigroup = function_1.getSemigroup;
+/**
+ * Use [`Semigroup`](./string.ts.html#Semigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.semigroupString = {
+    concat: function (x, y) { return x + y; }
+};
+/**
+ * Use [`SemigroupSum`](./number.ts.html#SemigroupSum) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.semigroupSum = {
+    concat: function (x, y) { return x + y; }
+};
+/**
+ * Use [`SemigroupProduct`](./number.ts.html#SemigroupProduct) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.semigroupProduct = {
+    concat: function (x, y) { return x * y; }
+};
+
+
+/***/ }),
+
+/***/ 5877:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+/**
+ * ```ts
+ * interface Separated<E, A> {
+ *    readonly left: E
+ *    readonly right: A
+ * }
+ * ```
+ *
+ * Represents a result of separating a whole into two parts.
+ *
+ * @since 2.10.0
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.right = exports.left = exports.flap = exports.Functor = exports.Bifunctor = exports.URI = exports.bimap = exports.mapLeft = exports.map = exports.separated = void 0;
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * @category constructors
+ * @since 2.10.0
+ */
+var separated = function (left, right) { return ({ left: left, right: right }); };
+exports.separated = separated;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+var _mapLeft = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.mapLeft)(f)); };
+var _bimap = function (fa, g, f) { return (0, function_1.pipe)(fa, (0, exports.bimap)(g, f)); };
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: F<A>) => F<B>` whose argument and return types
+ * use the type constructor `F` to represent some computational context.
+ *
+ * @category mapping
+ * @since 2.10.0
+ */
+var map = function (f) {
+    return function (fa) {
+        return (0, exports.separated)((0, exports.left)(fa), f((0, exports.right)(fa)));
+    };
+};
+exports.map = map;
+/**
+ * Map a function over the first type argument of a bifunctor.
+ *
+ * @category error handling
+ * @since 2.10.0
+ */
+var mapLeft = function (f) {
+    return function (fa) {
+        return (0, exports.separated)(f((0, exports.left)(fa)), (0, exports.right)(fa));
+    };
+};
+exports.mapLeft = mapLeft;
+/**
+ * Map a pair of functions over the two type arguments of the bifunctor.
+ *
+ * @category mapping
+ * @since 2.10.0
+ */
+var bimap = function (f, g) {
+    return function (fa) {
+        return (0, exports.separated)(f((0, exports.left)(fa)), g((0, exports.right)(fa)));
+    };
+};
+exports.bimap = bimap;
+/**
+ * @category type lambdas
+ * @since 2.10.0
+ */
+exports.URI = 'Separated';
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Bifunctor = {
+    URI: exports.URI,
+    mapLeft: _mapLeft,
+    bimap: _bimap
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.10.0
+ */
+var left = function (s) { return s.left; };
+exports.left = left;
+/**
+ * @since 2.10.0
+ */
+var right = function (s) { return s.right; };
+exports.right = right;
+
+
+/***/ }),
+
+/***/ 2664:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.sequenceSeqArray = exports.traverseSeqArray = exports.traverseSeqArrayWithIndex = exports.sequenceArray = exports.traverseArray = exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndexSeq = exports.traverseReadonlyNonEmptyArrayWithIndexSeq = exports.traverseReadonlyArrayWithIndex = exports.traverseReadonlyNonEmptyArrayWithIndex = exports.ApT = exports.apS = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.never = exports.FromTask = exports.chainFirstIOK = exports.chainIOK = exports.fromIOK = exports.tapIO = exports.tap = exports.flatMapIO = exports.FromIO = exports.MonadTask = exports.fromTask = exports.MonadIO = exports.Monad = exports.Chain = exports.ApplicativeSeq = exports.ApplySeq = exports.ApplicativePar = exports.apSecond = exports.apFirst = exports.ApplyPar = exports.Pointed = exports.flap = exports.asUnit = exports.as = exports.Functor = exports.getRaceMonoid = exports.URI = exports.flatten = exports.flatMap = exports.of = exports.ap = exports.map = exports.delay = exports.fromIO = void 0;
+exports.getMonoid = exports.getSemigroup = exports.taskSeq = exports.task = exports.chainFirst = exports.chain = void 0;
+/**
+ * ```ts
+ * interface Task<A> {
+ *   (): Promise<A>
+ * }
+ * ```
+ *
+ * `Task<A>` represents an asynchronous computation that yields a value of type `A` and **never fails**.
+ * If you want to represent an asynchronous computation that may fail, please see `TaskEither`.
+ *
+ * @since 2.0.0
+ */
+var Applicative_1 = __nccwpck_require__(4766);
+var Apply_1 = __nccwpck_require__(205);
+var chainable = __importStar(__nccwpck_require__(2372));
+var FromIO_1 = __nccwpck_require__(7948);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+// -------------------------------------------------------------------------------------
+// conversions
+// -------------------------------------------------------------------------------------
+/**
+ * @category conversions
+ * @since 2.0.0
+ */
+var fromIO = function (ma) { return function () { return Promise.resolve().then(ma); }; };
+exports.fromIO = fromIO;
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * Creates a task that will complete after a time delay
+ *
+ * @example
+ * import { sequenceT } from 'fp-ts/Apply'
+ * import * as T from 'fp-ts/Task'
+ * import { takeRight } from 'fp-ts/Array'
+ *
+ * async function test() {
+ *   const log: Array<string> = []
+ *   const append = (message: string): T.Task<void> =>
+ *     T.fromIO(() => {
+ *       log.push(message)
+ *     })
+ *   const fa = append('a')
+ *   const fb = T.delay(20)(append('b'))
+ *   const fc = T.delay(10)(append('c'))
+ *   const fd = append('d')
+ *   await sequenceT(T.ApplyPar)(fa, fb, fc, fd)()
+ *   assert.deepStrictEqual(takeRight(2)(log), ['c', 'b'])
+ * }
+ *
+ * test()
+ *
+ * @since 2.0.0
+ */
+function delay(millis) {
+    return function (ma) { return function () {
+        return new Promise(function (resolve) {
+            setTimeout(function () {
+                Promise.resolve().then(ma).then(resolve);
+            }, millis);
+        });
+    }; };
+}
+exports.delay = delay;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+var _apPar = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+var _apSeq = function (fab, fa) { return (0, exports.flatMap)(fab, function (f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); }); };
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: F<A>) => F<B>` whose argument and return types
+ * use the type constructor `F` to represent some computational context.
+ *
+ * @category mapping
+ * @since 2.0.0
+ */
+var map = function (f) { return function (fa) { return function () {
+    return Promise.resolve().then(fa).then(f);
+}; }; };
+exports.map = map;
+/**
+ * @since 2.0.0
+ */
+var ap = function (fa) { return function (fab) { return function () {
+    return Promise.all([Promise.resolve().then(fab), Promise.resolve().then(fa)]).then(function (_a) {
+        var f = _a[0], a = _a[1];
+        return f(a);
+    });
+}; }; };
+exports.ap = ap;
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+var of = function (a) { return function () { return Promise.resolve(a); }; };
+exports.of = of;
+/**
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, function (ma, f) {
+    return function () {
+        return Promise.resolve()
+            .then(ma)
+            .then(function (a) { return f(a)(); });
+    };
+});
+/**
+ * @category sequencing
+ * @since 2.0.0
+ */
+exports.flatten = (0, exports.flatMap)(function_1.identity);
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'Task';
+/**
+ * Monoid returning the first completed task.
+ *
+ * Note: uses `Promise.race` internally.
+ *
+ * @example
+ * import * as T from 'fp-ts/Task'
+ *
+ * async function test() {
+ *   const S = T.getRaceMonoid<string>()
+ *   const fa = T.delay(20)(T.of('a'))
+ *   const fb = T.delay(10)(T.of('b'))
+ *   assert.deepStrictEqual(await S.concat(fa, fb)(), 'b')
+ * }
+ *
+ * test()
+ *
+ * @category instances
+ * @since 2.0.0
+ */
+function getRaceMonoid() {
+    return {
+        concat: function (x, y) { return function () { return Promise.race([Promise.resolve().then(x), Promise.resolve().then(y)]); }; },
+        empty: exports.never
+    };
+}
+exports.getRaceMonoid = getRaceMonoid;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * Maps the value to the specified constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.as = (0, function_1.dual)(2, (0, Functor_1.as)(exports.Functor));
+/**
+ * Maps the value to the void constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.asUnit = (0, Functor_1.asUnit)(exports.Functor);
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * Runs computations in parallel.
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.ApplyPar = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar
+};
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.0.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.ApplyPar);
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.0.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.ApplyPar);
+/**
+ * Runs computations in parallel.
+ *
+ * @category instances
+ * @since 2.7.0
+ */
+exports.ApplicativePar = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    of: exports.of
+};
+/**
+ * Runs computations sequentially.
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.ApplySeq = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apSeq
+};
+/**
+ * Runs computations sequentially.
+ *
+ * @category instances
+ * @since 2.7.0
+ */
+exports.ApplicativeSeq = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apSeq,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _apPar,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonadIO = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _apPar,
+    chain: exports.flatMap,
+    fromIO: exports.fromIO
+};
+/**
+ * @category zone of death
+ * @since 2.7.0
+ * @deprecated
+ */
+exports.fromTask = function_1.identity;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonadTask = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _apPar,
+    chain: exports.flatMap,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.FromIO = {
+    URI: exports.URI,
+    fromIO: exports.fromIO
+};
+/** @internal */
+var _FlatMap = {
+    flatMap: exports.flatMap
+};
+/** @internal */
+var _FromIO = {
+    fromIO: exports.FromIO.fromIO
+};
+/**
+ * @category sequencing
+ * @since 2.16.0
+ */
+exports.flatMapIO = _.flatMapIO(_FromIO, _FlatMap);
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @category combinators
+ * @since 2.15.0
+ */
+exports.tap = (0, function_1.dual)(2, chainable.tap(exports.Chain));
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as T from 'fp-ts/Task'
+ * import * as Console from 'fp-ts/Console'
+ *
+ * // Will produce `Hello, fp-ts` to the stdout
+ * const effect = pipe(
+ *   T.of('fp-ts'),
+ *   T.tapIO((value) => Console.log(`Hello, ${value}`)),
+ * )
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(await effect(), 'fp-ts')
+ * }
+ *
+ * test()
+ *
+ * @category combinators
+ * @since 2.16.0
+ */
+exports.tapIO = (0, function_1.dual)(2, (0, FromIO_1.tapIO)(exports.FromIO, exports.Chain));
+/**
+ * @category lifting
+ * @since 2.4.0
+ */
+exports.fromIOK = 
+/*#__PURE__*/ (0, FromIO_1.fromIOK)(exports.FromIO);
+/**
+ * Alias of `flatMapIO`.
+ *
+ * @category legacy
+ * @since 2.4.0
+ */
+exports.chainIOK = exports.flatMapIO;
+/**
+ * Alias of `tapIO`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.chainFirstIOK = exports.tapIO;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.FromTask = {
+    URI: exports.URI,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask
+};
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * A `Task` that never completes.
+ *
+ * @since 2.0.0
+ */
+var never = function () { return new Promise(function (_) { return undefined; }); };
+exports.never = never;
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = chainable.bind(exports.Chain);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.ApplyPar);
+/**
+ * @since 2.11.0
+ */
+exports.ApT = (0, exports.of)(_.emptyReadonlyArray);
+// -------------------------------------------------------------------------------------
+// array utils
+// -------------------------------------------------------------------------------------
+/**
+ * Equivalent to `ReadonlyNonEmptyArray#traverseWithIndex(ApplicativePar)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyNonEmptyArrayWithIndex = function (f) {
+    return function (as) {
+        return function () {
+            return Promise.all(as.map(function (a, i) { return Promise.resolve().then(function () { return f(i, a)(); }); }));
+        };
+    };
+};
+exports.traverseReadonlyNonEmptyArrayWithIndex = traverseReadonlyNonEmptyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativePar)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyArrayWithIndex = function (f) {
+    var g = (0, exports.traverseReadonlyNonEmptyArrayWithIndex)(f);
+    return function (as) { return (_.isNonEmpty(as) ? g(as) : exports.ApT); };
+};
+exports.traverseReadonlyArrayWithIndex = traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyNonEmptyArray#traverseWithIndex(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyNonEmptyArrayWithIndexSeq = function (f) {
+    return function (as) {
+        return function () {
+            return _.tail(as).reduce(function (acc, a, i) {
+                return acc.then(function (bs) {
+                    return Promise.resolve()
+                        .then(f(i + 1, a))
+                        .then(function (b) {
+                        bs.push(b);
+                        return bs;
+                    });
+                });
+            }, Promise.resolve()
+                .then(f(0, _.head(as)))
+                .then(_.singleton));
+        };
+    };
+};
+exports.traverseReadonlyNonEmptyArrayWithIndexSeq = traverseReadonlyNonEmptyArrayWithIndexSeq;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyArrayWithIndexSeq = function (f) {
+    var g = (0, exports.traverseReadonlyNonEmptyArrayWithIndexSeq)(f);
+    return function (as) { return (_.isNonEmpty(as) ? g(as) : exports.ApT); };
+};
+exports.traverseReadonlyArrayWithIndexSeq = traverseReadonlyArrayWithIndexSeq;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverse(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+var traverseArray = function (f) {
+    return (0, exports.traverseReadonlyArrayWithIndex)(function (_, a) { return f(a); });
+};
+exports.traverseArray = traverseArray;
+/**
+ * Equivalent to `ReadonlyArray#sequence(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.sequenceArray = 
+/*#__PURE__*/ (0, exports.traverseArray)(function_1.identity);
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.traverseSeqArrayWithIndex = exports.traverseReadonlyArrayWithIndexSeq;
+/**
+ * Equivalent to `ReadonlyArray#traverse(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+var traverseSeqArray = function (f) {
+    return (0, exports.traverseReadonlyArrayWithIndexSeq)(function (_, a) { return f(a); });
+};
+exports.traverseSeqArray = traverseSeqArray;
+/**
+ * Equivalent to `ReadonlyArray#sequence(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.sequenceSeqArray = 
+/*#__PURE__*/ (0, exports.traverseSeqArray)(function_1.identity);
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chain = exports.flatMap;
+/**
+ * Alias of `tap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chainFirst = exports.tap;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `T.Functor` instead of `T.task`
+ * (where `T` is from `import T from 'fp-ts/Task'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.task = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _apPar,
+    chain: exports.flatMap,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask
+};
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `T.Functor` instead of `T.taskSeq`
+ * (where `T` is from `import T from 'fp-ts/Task'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.taskSeq = {
+    URI: exports.URI,
+    map: _map,
+    of: exports.of,
+    ap: _apSeq,
+    chain: exports.flatMap,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask
+};
+/**
+ * Use [`getApplySemigroup`](./Apply.ts.html#getapplysemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getSemigroup = (0, Apply_1.getApplySemigroup)(exports.ApplySeq);
+/**
+ * Use [`getApplicativeMonoid`](./Applicative.ts.html#getapplicativemonoid) instead.
+ *
+ * Lift a monoid into 'Task', the inner values are concatenated using the provided `Monoid`.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getMonoid = (0, Applicative_1.getApplicativeMonoid)(exports.ApplicativeSeq);
+
+
+/***/ }),
+
+/***/ 437:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.throwError = exports.of = exports.altW = exports.alt = exports.flatten = exports.flattenW = exports.flatMap = exports.apW = exports.ap = exports.mapLeft = exports.mapError = exports.bimap = exports.mapBoth = exports.map = exports.fromIOEitherK = exports.chainTaskOptionK = exports.chainTaskOptionKW = exports.fromTaskOptionK = exports.swap = exports.orLeft = exports.orElseFirstTaskK = exports.orElseFirstIOK = exports.tapError = exports.orElseW = exports.orElse = exports.chainNullableK = exports.fromNullableK = exports.fromNullable = exports.toUnion = exports.tryCatchK = exports.tryCatch = exports.getOrElseW = exports.getOrElse = exports.foldW = exports.matchEW = exports.fold = exports.matchE = exports.matchW = exports.match = exports.fromTaskOption = exports.fromIOEither = exports.fromEither = exports.fromTask = exports.fromIO = exports.leftIO = exports.rightIO = exports.leftTask = exports.rightTask = exports.right = exports.left = void 0;
+exports.fromPredicate = exports.chainFirstEitherKW = exports.chainFirstEitherK = exports.chainEitherKW = exports.chainEitherK = exports.flatMapTaskOption = exports.flatMapIOEither = exports.flatMapTask = exports.flatMapIO = exports.flatMapEither = exports.flatMapOption = exports.flatMapNullable = exports.liftOption = exports.liftNullable = exports.chainOptionKW = exports.chainOptionK = exports.fromOptionK = exports.fromOption = exports.Alt = exports.Bifunctor = exports.tapTask = exports.tapIO = exports.tapEither = exports.tap = exports.FromTask = exports.FromIO = exports.FromEither = exports.MonadThrow = exports.MonadTask = exports.MonadIO = exports.Monad = exports.Chain = exports.ApplicativeSeq = exports.ApplySeq = exports.ApplicativePar = exports.apSecondW = exports.apSecond = exports.apFirstW = exports.apFirst = exports.ApplyPar = exports.Pointed = exports.flap = exports.asUnit = exports.as = exports.Functor = exports.getFilterable = exports.getCompactable = exports.getAltTaskValidation = exports.getApplicativeTaskValidation = exports.URI = void 0;
+exports.getTaskValidation = exports.getSemigroup = exports.getApplyMonoid = exports.getApplySemigroup = exports.taskEitherSeq = exports.taskEither = exports.orElseFirstW = exports.orElseFirst = exports.chainFirstW = exports.chainFirst = exports.chainW = exports.chain = exports.sequenceSeqArray = exports.traverseSeqArray = exports.traverseSeqArrayWithIndex = exports.sequenceArray = exports.traverseArray = exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndexSeq = exports.traverseReadonlyNonEmptyArrayWithIndexSeq = exports.traverseReadonlyArrayWithIndex = exports.traverseReadonlyNonEmptyArrayWithIndex = exports.ApT = exports.apSW = exports.apS = exports.bindW = exports.bind = exports["let"] = exports.bindTo = exports.Do = exports.bracketW = exports.bracket = exports.taskify = exports.chainIOEitherK = exports.chainIOEitherKW = exports.chainFirstTaskK = exports.chainTaskK = exports.fromTaskK = exports.chainFirstIOK = exports.chainIOK = exports.fromIOK = exports.fromEitherK = exports.filterOrElseW = exports.filterOrElse = void 0;
+var Applicative_1 = __nccwpck_require__(4766);
+var Apply_1 = __nccwpck_require__(205);
+var chainable = __importStar(__nccwpck_require__(2372));
+var Compactable_1 = __nccwpck_require__(729);
+var E = __importStar(__nccwpck_require__(7534));
+var ET = __importStar(__nccwpck_require__(9803));
+var Filterable_1 = __nccwpck_require__(6907);
+var FromEither_1 = __nccwpck_require__(1964);
+var FromIO_1 = __nccwpck_require__(7948);
+var FromTask_1 = __nccwpck_require__(2038);
+var function_1 = __nccwpck_require__(6985);
+var Functor_1 = __nccwpck_require__(5533);
+var _ = __importStar(__nccwpck_require__(1840));
+var T = __importStar(__nccwpck_require__(2664));
+// -------------------------------------------------------------------------------------
+// constructors
+// -------------------------------------------------------------------------------------
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.left = ET.left(T.Pointed);
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.right = ET.right(T.Pointed);
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.rightTask = ET.rightF(T.Functor);
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.leftTask = ET.leftF(T.Functor);
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.rightIO = (0, function_1.flow)(T.fromIO, exports.rightTask);
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.leftIO = (0, function_1.flow)(T.fromIO, exports.leftTask);
+// -------------------------------------------------------------------------------------
+// conversions
+// -------------------------------------------------------------------------------------
+/**
+ * @category conversions
+ * @since 2.7.0
+ */
+exports.fromIO = exports.rightIO;
+/**
+ * @category conversions
+ * @since 2.7.0
+ */
+exports.fromTask = exports.rightTask;
+/**
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.fromEither = T.of;
+/**
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.fromIOEither = T.fromIO;
+/**
+ * @category conversions
+ * @since 2.11.0
+ */
+var fromTaskOption = function (onNone) {
+    return T.map(E.fromOption(onNone));
+};
+exports.fromTaskOption = fromTaskOption;
+/**
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.match = 
+/*#__PURE__*/ ET.match(T.Functor);
+/**
+ * Less strict version of [`match`](#match).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return types will be merged.
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchW = exports.match;
+/**
+ * The `E` suffix (short for **E**ffect) means that the handlers return an effect (`Task`).
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchE = ET.matchE(T.Monad);
+/**
+ * Alias of [`matchE`](#matche).
+ *
+ * @category pattern matching
+ * @since 2.0.0
+ */
+exports.fold = exports.matchE;
+/**
+ * Less strict version of [`matchE`](#matche).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return types will be merged.
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.matchEW = exports.matchE;
+/**
+ * Alias of [`matchEW`](#matchew).
+ *
+ * @category pattern matching
+ * @since 2.10.0
+ */
+exports.foldW = exports.matchEW;
+/**
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.getOrElse = 
+/*#__PURE__*/ ET.getOrElse(T.Monad);
+/**
+ * Less strict version of [`getOrElse`](#getorelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the handler return type will be merged.
+ *
+ * @category error handling
+ * @since 2.6.0
+ */
+exports.getOrElseW = exports.getOrElse;
+/**
+ * Transforms a `Promise` that may reject to a `Promise` that never rejects and returns an `Either` instead.
+ *
+ * See also [`tryCatchK`](#trycatchk).
+ *
+ * @example
+ * import { left, right } from 'fp-ts/Either'
+ * import { tryCatch } from 'fp-ts/TaskEither'
+ *
+ * tryCatch(() => Promise.resolve(1), String)().then(result => {
+ *   assert.deepStrictEqual(result, right(1))
+ * })
+ * tryCatch(() => Promise.reject('error'), String)().then(result => {
+ *   assert.deepStrictEqual(result, left('error'))
+ * })
+ *
+ * @category interop
+ * @since 2.0.0
+ */
+var tryCatch = function (f, onRejected) {
+    return function () { return __awaiter(void 0, void 0, void 0, function () {
+        var reason_1;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    _a.trys.push([0, 2, , 3]);
+                    return [4 /*yield*/, f().then(_.right)];
+                case 1: return [2 /*return*/, _a.sent()];
+                case 2:
+                    reason_1 = _a.sent();
+                    return [2 /*return*/, _.left(onRejected(reason_1))];
+                case 3: return [2 /*return*/];
+            }
+        });
+    }); };
+};
+exports.tryCatch = tryCatch;
+/**
+ * Converts a function returning a `Promise` to one returning a `TaskEither`.
+ *
+ * @category interop
+ * @since 2.5.0
+ */
+var tryCatchK = function (f, onRejected) {
+    return function () {
+        var a = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            a[_i] = arguments[_i];
+        }
+        return (0, exports.tryCatch)(function () { return f.apply(void 0, a); }, onRejected);
+    };
+};
+exports.tryCatchK = tryCatchK;
+/**
+ * @category conversions
+ * @since 2.10.0
+ */
+exports.toUnion = ET.toUnion(T.Functor);
+/**
+ * @category conversions
+ * @since 2.12.0
+ */
+exports.fromNullable = ET.fromNullable(T.Pointed);
+/**
+ * Use `liftNullable`.
+ *
+ * @category legacy
+ * @since 2.12.0
+ */
+exports.fromNullableK = ET.fromNullableK(T.Pointed);
+/**
+ * Use `flatMapNullable`.
+ *
+ * @category legacy
+ * @since 2.12.0
+ */
+exports.chainNullableK = 
+/*#__PURE__*/ ET.chainNullableK(T.Monad);
+// -------------------------------------------------------------------------------------
+// combinators
+// -------------------------------------------------------------------------------------
+/**
+ * Returns `ma` if is a `Right` or the value returned by `onLeft` otherwise.
+ *
+ * See also [alt](#alt).
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as TE from 'fp-ts/TaskEither'
+ *
+ * async function test() {
+ *   const errorHandler = TE.orElse((error: string) => TE.right(`recovering from ${error}...`))
+ *   assert.deepStrictEqual(await pipe(TE.right('ok'), errorHandler)(), E.right('ok'))
+ *   assert.deepStrictEqual(await pipe(TE.left('ko'), errorHandler)(), E.right('recovering from ko...'))
+ * }
+ *
+ * test()
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.orElse = 
+/*#__PURE__*/ ET.orElse(T.Monad);
+/**
+ * Less strict version of [`orElse`](#orelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the return types will be merged.
+ *
+ * @category error handling
+ * @since 2.10.0
+ */
+exports.orElseW = exports.orElse;
+/**
+ * Returns an effect that effectfully "peeks" at the failure of this effect.
+ *
+ * @category error handling
+ * @since 2.15.0
+ */
+exports.tapError = (0, function_1.dual)(2, ET.tapError(T.Monad));
+/**
+ * @category error handling
+ * @since 2.12.0
+ */
+var orElseFirstIOK = function (onLeft) { return (0, exports.tapError)((0, exports.fromIOK)(onLeft)); };
+exports.orElseFirstIOK = orElseFirstIOK;
+/**
+ * @category error handling
+ * @since 2.12.0
+ */
+var orElseFirstTaskK = function (onLeft) { return (0, exports.tapError)((0, exports.fromTaskK)(onLeft)); };
+exports.orElseFirstTaskK = orElseFirstTaskK;
+/**
+ * @category error handling
+ * @since 2.11.0
+ */
+exports.orLeft = 
+/*#__PURE__*/ ET.orLeft(T.Monad);
+/**
+ * @since 2.0.0
+ */
+exports.swap = ET.swap(T.Functor);
+/**
+ * @category lifting
+ * @since 2.11.0
+ */
+var fromTaskOptionK = function (onNone) {
+    var from = (0, exports.fromTaskOption)(onNone);
+    return function (f) { return (0, function_1.flow)(f, from); };
+};
+exports.fromTaskOptionK = fromTaskOptionK;
+/**
+ * Use `flatMapTaskOption`.
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category legacy
+ * @since 2.12.3
+ */
+var chainTaskOptionKW = function (onNone) {
+    return function (f) {
+        return function (ma) {
+            return (0, exports.flatMap)(ma, (0, exports.fromTaskOptionK)(onNone)(f));
+        };
+    };
+};
+exports.chainTaskOptionKW = chainTaskOptionKW;
+/**
+ * Use `flatMapTaskOption`.
+ *
+ * @category legacy
+ * @since 2.11.0
+ */
+exports.chainTaskOptionK = exports.chainTaskOptionKW;
+/**
+ * @category lifting
+ * @since 2.4.0
+ */
+var fromIOEitherK = function (f) { return (0, function_1.flow)(f, exports.fromIOEither); };
+exports.fromIOEitherK = fromIOEitherK;
+var _map = function (fa, f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); };
+var _apPar = function (fab, fa) { return (0, function_1.pipe)(fab, (0, exports.ap)(fa)); };
+var _apSeq = function (fab, fa) { return (0, exports.flatMap)(fab, function (f) { return (0, function_1.pipe)(fa, (0, exports.map)(f)); }); };
+/* istanbul ignore next */
+var _alt = function (fa, that) { return (0, function_1.pipe)(fa, (0, exports.alt)(that)); };
+/**
+ * `map` can be used to turn functions `(a: A) => B` into functions `(fa: F<A>) => F<B>` whose argument and return types
+ * use the type constructor `F` to represent some computational context.
+ *
+ * @category mapping
+ * @since 2.0.0
+ */
+exports.map = ET.map(T.Functor);
+/**
+ * Returns a `TaskEither` whose failure and success channels have been mapped by the specified pair of functions, `f` and `g`.
+ *
+ * @example
+ * import * as TaskEither from 'fp-ts/TaskEither'
+ * import * as Either from 'fp-ts/Either'
+ *
+ * const f = (s: string) => new Error(s)
+ * const g = (n: number) => n * 2
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(await TaskEither.mapBoth(TaskEither.right(1), f, g)(), Either.right(2))
+ *   assert.deepStrictEqual(await TaskEither.mapBoth(TaskEither.left('err'), f, g)(), Either.left(new Error('err')))
+ * }
+ *
+ * test()
+ *
+ * @category error handling
+ * @since 2.16.0
+ */
+exports.mapBoth = (0, function_1.dual)(3, ET.mapBoth(T.Functor));
+/**
+ * Alias of `mapBoth`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.bimap = exports.mapBoth;
+/**
+ * Returns a `TaskEither` with its error channel mapped using the specified function.
+ *
+ * @example
+ * import * as TaskEither from 'fp-ts/TaskEither'
+ * import * as Either from 'fp-ts/Either'
+ *
+ * const f = (s: string) => new Error(s)
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(await TaskEither.mapError(TaskEither.right(1), f)(), Either.right(1))
+ *   assert.deepStrictEqual(await TaskEither.mapError(TaskEither.left('err'), f)(), Either.left(new Error('err')))
+ * }
+ *
+ * test()
+ *
+ * @category error handling
+ * @since 2.16.0
+ */
+exports.mapError = (0, function_1.dual)(2, ET.mapError(T.Functor));
+/**
+ * Alias of `mapError`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.mapLeft = exports.mapError;
+/**
+ * @since 2.0.0
+ */
+exports.ap = 
+/*#__PURE__*/ ET.ap(T.ApplyPar);
+/**
+ * Less strict version of [`ap`](#ap).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.8.0
+ */
+exports.apW = exports.ap;
+/**
+ * @category sequencing
+ * @since 2.14.0
+ */
+exports.flatMap = (0, function_1.dual)(2, ET.flatMap(T.Monad));
+/**
+ * Less strict version of [`flatten`](#flatten).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category sequencing
+ * @since 2.11.0
+ */
+exports.flattenW = 
+/*#__PURE__*/ (0, exports.flatMap)(function_1.identity);
+/**
+ * @category sequencing
+ * @since 2.0.0
+ */
+exports.flatten = exports.flattenW;
+/**
+ * Identifies an associative operation on a type constructor. It is similar to `Semigroup`, except that it applies to
+ * types of kind `* -> *`.
+ *
+ * In case of `TaskEither` returns `fa` if is a `Right` or the value returned by `that` otherwise.
+ *
+ * See also [orElse](#orelse).
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as TE from 'fp-ts/TaskEither'
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(
+ *     await pipe(
+ *       TE.right(1),
+ *       TE.alt(() => TE.right(2))
+ *     )(),
+ *     E.right(1)
+ *   )
+ *   assert.deepStrictEqual(
+ *     await pipe(
+ *       TE.left('a'),
+ *       TE.alt(() => TE.right(2))
+ *     )(),
+ *     E.right(2)
+ *   )
+ *   assert.deepStrictEqual(
+ *     await pipe(
+ *       TE.left('a'),
+ *       TE.alt(() => TE.left('b'))
+ *     )(),
+ *     E.left('b')
+ *   )
+ * }
+ *
+ * test()
+ *
+ * @category error handling
+ * @since 2.0.0
+ */
+exports.alt = 
+/*#__PURE__*/ ET.alt(T.Monad);
+/**
+ * Less strict version of [`alt`](#alt).
+ *
+ * The `W` suffix (short for **W**idening) means that the error and the return types will be merged.
+ *
+ * @category error handling
+ * @since 2.9.0
+ */
+exports.altW = exports.alt;
+/**
+ * @category constructors
+ * @since 2.0.0
+ */
+exports.of = exports.right;
+/**
+ * @since 2.7.0
+ */
+exports.throwError = exports.left;
+/**
+ * @category type lambdas
+ * @since 2.0.0
+ */
+exports.URI = 'TaskEither';
+/**
+ * The default [`ApplicativePar`](#applicativepar) instance returns the first error, if you want to
+ * get all errors you need to provide a way to concatenate them via a `Semigroup`.
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as RA from 'fp-ts/ReadonlyArray'
+ * import * as S from 'fp-ts/Semigroup'
+ * import * as string from 'fp-ts/string'
+ * import * as T from 'fp-ts/Task'
+ * import * as TE from 'fp-ts/TaskEither'
+ *
+ * interface User {
+ *   readonly id: string
+ *   readonly name: string
+ * }
+ *
+ * const remoteDatabase: ReadonlyArray<User> = [
+ *   { id: 'id1', name: 'John' },
+ *   { id: 'id2', name: 'Mary' },
+ *   { id: 'id3', name: 'Joey' }
+ * ]
+ *
+ * const fetchUser = (id: string): TE.TaskEither<string, User> =>
+ *   pipe(
+ *     remoteDatabase,
+ *     RA.findFirst((user) => user.id === id),
+ *     TE.fromOption(() => `${id} not found`)
+ *   )
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(
+ *     await pipe(['id4', 'id5'], RA.traverse(TE.ApplicativePar)(fetchUser))(),
+ *     E.left('id4 not found') // <= first error
+ *   )
+ *
+ *   const Applicative = TE.getApplicativeTaskValidation(
+ *     T.ApplyPar,
+ *     pipe(string.Semigroup, S.intercalate(', '))
+ *   )
+ *
+ *   assert.deepStrictEqual(
+ *     await pipe(['id4', 'id5'], RA.traverse(Applicative)(fetchUser))(),
+ *     E.left('id4 not found, id5 not found') // <= all errors
+ *   )
+ * }
+ *
+ * test()
+ *
+ * @category error handling
+ * @since 2.7.0
+ */
+function getApplicativeTaskValidation(A, S) {
+    var ap = (0, Apply_1.ap)(A, E.getApplicativeValidation(S));
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        ap: function (fab, fa) { return (0, function_1.pipe)(fab, ap(fa)); },
+        of: exports.of
+    };
+}
+exports.getApplicativeTaskValidation = getApplicativeTaskValidation;
+/**
+ * The default [`Alt`](#alt) instance returns the last error, if you want to
+ * get all errors you need to provide a way to concatenate them via a `Semigroup`.
+ *
+ * See [`getAltValidation`](./Either.ts.html#getaltvalidation).
+ *
+ * @category error handling
+ * @since 2.7.0
+ */
+function getAltTaskValidation(S) {
+    var alt = ET.altValidation(T.Monad, S);
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        alt: function (fa, that) { return (0, function_1.pipe)(fa, alt(that)); }
+    };
+}
+exports.getAltTaskValidation = getAltTaskValidation;
+/**
+ * @category filtering
+ * @since 2.10.0
+ */
+var getCompactable = function (M) {
+    var C = E.getCompactable(M);
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        compact: (0, Compactable_1.compact)(T.Functor, C),
+        separate: (0, Compactable_1.separate)(T.Functor, C, E.Functor)
+    };
+};
+exports.getCompactable = getCompactable;
+/**
+ * @category filtering
+ * @since 2.1.0
+ */
+function getFilterable(M) {
+    var F = E.getFilterable(M);
+    var C = (0, exports.getCompactable)(M);
+    var filter = (0, Filterable_1.filter)(T.Functor, F);
+    var filterMap = (0, Filterable_1.filterMap)(T.Functor, F);
+    var partition = (0, Filterable_1.partition)(T.Functor, F);
+    var partitionMap = (0, Filterable_1.partitionMap)(T.Functor, F);
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        compact: C.compact,
+        separate: C.separate,
+        filter: function (fa, predicate) { return (0, function_1.pipe)(fa, filter(predicate)); },
+        filterMap: function (fa, f) { return (0, function_1.pipe)(fa, filterMap(f)); },
+        partition: function (fa, predicate) { return (0, function_1.pipe)(fa, partition(predicate)); },
+        partitionMap: function (fa, f) { return (0, function_1.pipe)(fa, partitionMap(f)); }
+    };
+}
+exports.getFilterable = getFilterable;
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Functor = {
+    URI: exports.URI,
+    map: _map
+};
+/**
+ * Maps the `Right` value of this `TaskEither` to the specified constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.as = (0, function_1.dual)(2, (0, Functor_1.as)(exports.Functor));
+/**
+ * Maps the `Right` value of this `TaskEither` to the void constant value.
+ *
+ * @category mapping
+ * @since 2.16.0
+ */
+exports.asUnit = (0, Functor_1.asUnit)(exports.Functor);
+/**
+ * @category mapping
+ * @since 2.10.0
+ */
+exports.flap = (0, Functor_1.flap)(exports.Functor);
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Pointed = {
+    URI: exports.URI,
+    of: exports.of
+};
+/**
+ * Runs computations in parallel.
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.ApplyPar = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar
+};
+/**
+ * Combine two effectful actions, keeping only the result of the first.
+ *
+ * @since 2.0.0
+ */
+exports.apFirst = (0, Apply_1.apFirst)(exports.ApplyPar);
+/**
+ * Less strict version of [`apFirst`](#apfirst).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.12.0
+ */
+exports.apFirstW = exports.apFirst;
+/**
+ * Combine two effectful actions, keeping only the result of the second.
+ *
+ * @since 2.0.0
+ */
+exports.apSecond = (0, Apply_1.apSecond)(exports.ApplyPar);
+/**
+ * Less strict version of [`apSecond`](#apsecond).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.12.0
+ */
+exports.apSecondW = exports.apSecond;
+/**
+ * Runs computations in parallel.
+ *
+ * @category instances
+ * @since 2.7.0
+ */
+exports.ApplicativePar = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    of: exports.of
+};
+/**
+ * Runs computations sequentially.
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.ApplySeq = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apSeq
+};
+/**
+ * Runs computations sequentially.
+ *
+ * @category instances
+ * @since 2.7.0
+ */
+exports.ApplicativeSeq = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apSeq,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Chain = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    chain: exports.flatMap
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Monad = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    chain: exports.flatMap,
+    of: exports.of
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonadIO = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    chain: exports.flatMap,
+    of: exports.of,
+    fromIO: exports.fromIO
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonadTask = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    chain: exports.flatMap,
+    of: exports.of,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonadThrow = {
+    URI: exports.URI,
+    map: _map,
+    ap: _apPar,
+    chain: exports.flatMap,
+    of: exports.of,
+    throwError: exports.throwError
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.FromEither = {
+    URI: exports.URI,
+    fromEither: exports.fromEither
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.FromIO = {
+    URI: exports.URI,
+    fromIO: exports.fromIO
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.FromTask = {
+    URI: exports.URI,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask
+};
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @category combinators
+ * @since 2.15.0
+ */
+exports.tap = (0, function_1.dual)(2, chainable.tap(exports.Chain));
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import * as E from 'fp-ts/Either'
+ * import { pipe } from 'fp-ts/function'
+ * import * as TE from 'fp-ts/TaskEither'
+ *
+ * const checkString = (value: string) => pipe(
+ *   TE.of(value),
+ *   TE.tapEither(() => value.length > 0 ? E.right('ok') : E.left('error'))
+ * )
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(await checkString('')(), E.left('error'))
+ *   assert.deepStrictEqual(await checkString('fp-ts')(), E.right('fp-ts'))
+ * }
+ *
+ * test()
+ *
+ * @category combinators
+ * @since 2.16.0
+ */
+exports.tapEither = (0, function_1.dual)(2, (0, FromEither_1.tapEither)(exports.FromEither, exports.Chain));
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import { pipe } from 'fp-ts/function'
+ * import * as TE from 'fp-ts/TaskEither'
+ * import * as E from 'fp-ts/Either'
+ * import * as Console from 'fp-ts/Console'
+ *
+ *
+ * // Will produce `Hello, fp-ts` to the stdout
+ * const effectA = TE.tapIO(
+ *   TE.of(1),
+ *   (value) => Console.log(`Hello, ${value}`)
+ * )
+ *
+ * // No output to the stdout
+ * const effectB = pipe(
+ *   TE.left('error'),
+ *   TE.tapIO((value) => Console.log(`Hello, ${value}`))
+ * )
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(await effectA(), E.of(1))
+ *   assert.deepStrictEqual(await effectB(), E.left('error'))
+ * }
+ *
+ * test()
+ *
+ * @category combinators
+ * @since 2.16.0
+ */
+exports.tapIO = (0, function_1.dual)(2, (0, FromIO_1.tapIO)(exports.FromIO, exports.Chain));
+/**
+ * Composes computations in sequence, using the return value of one computation to determine the next computation and
+ * keeping only the result of the first.
+ *
+ * @example
+ * import * as TE from 'fp-ts/TaskEither'
+ * import * as T from 'fp-ts/Task'
+ * import * as E from 'fp-ts/Either'
+ *
+ *
+ * const effect = TE.tapIO(
+ *   TE.of(1),
+ *   (value) => T.of(value + 1)
+ * )
+ *
+ * async function test() {
+ *   assert.deepStrictEqual(await effect(), E.of(1))
+ * }
+ *
+ * test()
+ *
+ * @category combinators
+ * @since 2.16.0
+ */
+exports.tapTask = (0, function_1.dual)(2, (0, FromTask_1.tapTask)(exports.FromTask, exports.Chain));
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Bifunctor = {
+    URI: exports.URI,
+    bimap: exports.mapBoth,
+    mapLeft: exports.mapError
+};
+/**
+ * @category instances
+ * @since 2.7.0
+ */
+exports.Alt = {
+    URI: exports.URI,
+    map: _map,
+    alt: _alt
+};
+/**
+ * @category conversions
+ * @since 2.0.0
+ */
+exports.fromOption = 
+/*#__PURE__*/ (0, FromEither_1.fromOption)(exports.FromEither);
+/**
+ * Use `liftOption`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.fromOptionK = 
+/*#__PURE__*/ (0, FromEither_1.fromOptionK)(exports.FromEither);
+/**
+ * Use `flatMapOption`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.chainOptionK = (0, FromEither_1.chainOptionK)(exports.FromEither, exports.Chain);
+/**
+ * Use `flatMapOption`.
+ *
+ * @category legacy
+ * @since 2.13.2
+ */
+exports.chainOptionKW = exports.chainOptionK;
+/** @internal */
+var _FromEither = {
+    fromEither: exports.FromEither.fromEither
+};
+/**
+ * @category lifting
+ * @since 2.15.0
+ */
+exports.liftNullable = _.liftNullable(_FromEither);
+/**
+ * @category lifting
+ * @since 2.15.0
+ */
+exports.liftOption = _.liftOption(_FromEither);
+/** @internal */
+var _FlatMap = {
+    flatMap: exports.flatMap
+};
+/** @internal */
+var _FromIO = {
+    fromIO: exports.FromIO.fromIO
+};
+/** @internal */
+var _FromTask = {
+    fromTask: exports.fromTask
+};
+/**
+ * @category sequencing
+ * @since 2.15.0
+ */
+exports.flatMapNullable = _.flatMapNullable(_FromEither, _FlatMap);
+/**
+ * @category sequencing
+ * @since 2.15.0
+ */
+exports.flatMapOption = _.flatMapOption(_FromEither, _FlatMap);
+/**
+ * @category sequencing
+ * @since 2.15.0
+ */
+exports.flatMapEither = _.flatMapEither(_FromEither, _FlatMap);
+/**
+ * @category sequencing
+ * @since 2.15.0
+ */
+exports.flatMapIO = _.flatMapIO(_FromIO, _FlatMap);
+/**
+ * @category sequencing
+ * @since 2.16.0
+ */
+exports.flatMapTask = _.flatMapTask(_FromTask, _FlatMap);
+/**
+ * @category sequencing
+ * @since 2.16.0
+ */
+exports.flatMapIOEither = (0, function_1.dual)(2, function (self, f) {
+    return (0, exports.flatMap)(self, (0, exports.fromIOEitherK)(f));
+});
+/**
+ * @category sequencing
+ * @since 2.16.0
+ */
+exports.flatMapTaskOption = (0, function_1.dual)(3, function (self, f, onNone) {
+    return (0, exports.flatMap)(self, function (a) { return (0, exports.fromTaskOption)(function () { return onNone(a); })(f(a)); });
+});
+/**
+ * Alias of `flatMapEither`.
+ *
+ * @category legacy
+ * @since 2.4.0
+ */
+exports.chainEitherK = exports.flatMapEither;
+/**
+ * Alias of `flatMapEither`.
+ *
+ * @category legacy
+ * @since 2.6.1
+ */
+exports.chainEitherKW = exports.flatMapEither;
+/**
+ * Alias of `tapEither`.
+ *
+ * @category legacy
+ * @since 2.12.0
+ */
+exports.chainFirstEitherK = exports.tapEither;
+/**
+ * Alias of `tapEither`.
+ *
+ * Less strict version of [`chainFirstEitherK`](#chainfirsteitherk).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category legacy
+ * @since 2.12.0
+ */
+exports.chainFirstEitherKW = exports.tapEither;
+/**
+ * @category lifting
+ * @since 2.0.0
+ */
+exports.fromPredicate = (0, FromEither_1.fromPredicate)(exports.FromEither);
+/**
+ * @category filtering
+ * @since 2.0.0
+ */
+exports.filterOrElse = (0, FromEither_1.filterOrElse)(exports.FromEither, exports.Chain);
+/**
+ * Less strict version of [`filterOrElse`](#filterorelse).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category filtering
+ * @since 2.9.0
+ */
+exports.filterOrElseW = exports.filterOrElse;
+/**
+ * @category lifting
+ * @since 2.4.0
+ */
+exports.fromEitherK = (0, FromEither_1.fromEitherK)(exports.FromEither);
+/**
+ * @category lifting
+ * @since 2.10.0
+ */
+exports.fromIOK = (0, FromIO_1.fromIOK)(exports.FromIO);
+/**
+ * Alias of `flatMapIO`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.chainIOK = exports.flatMapIO;
+/**
+ * Alias of `tapIO`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.chainFirstIOK = exports.tapIO;
+/**
+ * @category lifting
+ * @since 2.10.0
+ */
+exports.fromTaskK = (0, FromTask_1.fromTaskK)(exports.FromTask);
+/**
+ * Alias of `flatMapTask`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.chainTaskK = exports.flatMapTask;
+/**
+ * Alias of `tapTask`.
+ *
+ * @category legacy
+ * @since 2.10.0
+ */
+exports.chainFirstTaskK = exports.tapTask;
+/**
+ * Alias of `flatMapIOEither`.
+ *
+ * Less strict version of [`chainIOEitherK`](#chainioeitherk).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category legacy
+ * @since 2.6.1
+ */
+exports.chainIOEitherKW = exports.flatMapIOEither;
+/**
+ * Alias of `flatMapIOEither`.
+ *
+ * @category legacy
+ * @since 2.4.0
+ */
+exports.chainIOEitherK = exports.flatMapIOEither;
+function taskify(f) {
+    return function () {
+        var args = Array.prototype.slice.call(arguments);
+        return function () {
+            return new Promise(function (resolve) {
+                var cbResolver = function (e, r) { return (e != null ? resolve(_.left(e)) : resolve(_.right(r))); };
+                f.apply(null, args.concat(cbResolver));
+            });
+        };
+    };
+}
+exports.taskify = taskify;
+/**
+ * Make sure that a resource is cleaned up in the event of an exception (\*). The release action is called regardless of
+ * whether the body action throws (\*) or returns.
+ *
+ * (\*) i.e. returns a `Left`
+ *
+ * @since 2.0.0
+ */
+var bracket = function (acquire, use, release) { return (0, exports.bracketW)(acquire, use, release); };
+exports.bracket = bracket;
+/**
+ * Less strict version of [`bracket`](#bracket).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @since 2.12.0
+ */
+var bracketW = function (acquire, use, release) {
+    return (0, exports.flatMap)(acquire, function (a) { return T.flatMap(use(a), function (e) { return (0, exports.flatMap)(release(a, e), function () { return T.of(e); }); }); });
+};
+exports.bracketW = bracketW;
+// -------------------------------------------------------------------------------------
+// do notation
+// -------------------------------------------------------------------------------------
+/**
+ * @category do notation
+ * @since 2.9.0
+ */
+exports.Do = (0, exports.of)(_.emptyRecord);
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindTo = (0, Functor_1.bindTo)(exports.Functor);
+var let_ = /*#__PURE__*/ (0, Functor_1.let)(exports.Functor);
+exports["let"] = let_;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bind = chainable.bind(exports.Chain);
+/**
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.bindW = exports.bind;
+/**
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apS = (0, Apply_1.apS)(exports.ApplyPar);
+/**
+ * Less strict version of [`apS`](#aps).
+ *
+ * The `W` suffix (short for **W**idening) means that the error types will be merged.
+ *
+ * @category do notation
+ * @since 2.8.0
+ */
+exports.apSW = exports.apS;
+/**
+ * @since 2.11.0
+ */
+exports.ApT = (0, exports.of)(_.emptyReadonlyArray);
+// -------------------------------------------------------------------------------------
+// array utils
+// -------------------------------------------------------------------------------------
+/**
+ * Equivalent to `ReadonlyNonEmptyArray#traverseWithIndex(ApplicativePar)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyNonEmptyArrayWithIndex = function (f) {
+    return (0, function_1.flow)(T.traverseReadonlyNonEmptyArrayWithIndex(f), T.map(E.traverseReadonlyNonEmptyArrayWithIndex(function_1.SK)));
+};
+exports.traverseReadonlyNonEmptyArrayWithIndex = traverseReadonlyNonEmptyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativePar)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyArrayWithIndex = function (f) {
+    var g = (0, exports.traverseReadonlyNonEmptyArrayWithIndex)(f);
+    return function (as) { return (_.isNonEmpty(as) ? g(as) : exports.ApT); };
+};
+exports.traverseReadonlyArrayWithIndex = traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyNonEmptyArrayWithIndexSeq = function (f) {
+    return function (as) {
+        return function () {
+            return _.tail(as).reduce(function (acc, a, i) {
+                return acc.then(function (ebs) {
+                    return _.isLeft(ebs)
+                        ? acc
+                        : f(i + 1, a)().then(function (eb) {
+                            if (_.isLeft(eb)) {
+                                return eb;
+                            }
+                            ebs.right.push(eb.right);
+                            return ebs;
+                        });
+                });
+            }, f(0, _.head(as))().then(E.map(_.singleton)));
+        };
+    };
+};
+exports.traverseReadonlyNonEmptyArrayWithIndexSeq = traverseReadonlyNonEmptyArrayWithIndexSeq;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.11.0
+ */
+var traverseReadonlyArrayWithIndexSeq = function (f) {
+    var g = (0, exports.traverseReadonlyNonEmptyArrayWithIndexSeq)(f);
+    return function (as) { return (_.isNonEmpty(as) ? g(as) : exports.ApT); };
+};
+exports.traverseReadonlyArrayWithIndexSeq = traverseReadonlyArrayWithIndexSeq;
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.traverseArrayWithIndex = exports.traverseReadonlyArrayWithIndex;
+/**
+ * Equivalent to `ReadonlyArray#traverse(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+var traverseArray = function (f) { return (0, exports.traverseReadonlyArrayWithIndex)(function (_, a) { return f(a); }); };
+exports.traverseArray = traverseArray;
+/**
+ * Equivalent to `ReadonlyArray#sequence(Applicative)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.sequenceArray = 
+/*#__PURE__*/ (0, exports.traverseArray)(function_1.identity);
+/**
+ * Equivalent to `ReadonlyArray#traverseWithIndex(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.traverseSeqArrayWithIndex = exports.traverseReadonlyArrayWithIndexSeq;
+/**
+ * Equivalent to `ReadonlyArray#traverse(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+var traverseSeqArray = function (f) { return (0, exports.traverseReadonlyArrayWithIndexSeq)(function (_, a) { return f(a); }); };
+exports.traverseSeqArray = traverseSeqArray;
+/**
+ * Equivalent to `ReadonlyArray#sequence(ApplicativeSeq)`.
+ *
+ * @category traversing
+ * @since 2.9.0
+ */
+exports.sequenceSeqArray = 
+/*#__PURE__*/ (0, exports.traverseSeqArray)(function_1.identity);
+// -------------------------------------------------------------------------------------
+// legacy
+// -------------------------------------------------------------------------------------
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chain = exports.flatMap;
+/**
+ * Alias of `flatMap`.
+ *
+ * @category legacy
+ * @since 2.6.0
+ */
+exports.chainW = exports.flatMap;
+/**
+ * Alias of `tap`.
+ *
+ * @category legacy
+ * @since 2.0.0
+ */
+exports.chainFirst = exports.tap;
+/**
+ * Alias of `tap`.
+ *
+ * @category legacy
+ * @since 2.8.0
+ */
+exports.chainFirstW = exports.tap;
+/**
+ * Alias of `tapError`.
+ *
+ * @category legacy
+ * @since 2.11.0
+ */
+exports.orElseFirst = exports.tapError;
+/**
+ * Alias of `tapError`.
+ *
+ * @category legacy
+ * @since 2.11.0
+ */
+exports.orElseFirstW = exports.tapError;
+// -------------------------------------------------------------------------------------
+// deprecated
+// -------------------------------------------------------------------------------------
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `TE.Functor` instead of `TE.taskEither`
+ * (where `TE` is from `import TE from 'fp-ts/TaskEither'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.taskEither = {
+    URI: exports.URI,
+    bimap: exports.mapBoth,
+    mapLeft: exports.mapError,
+    map: _map,
+    of: exports.of,
+    ap: _apPar,
+    chain: exports.flatMap,
+    alt: _alt,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask,
+    throwError: exports.throwError
+};
+/**
+ * This instance is deprecated, use small, specific instances instead.
+ * For example if a function needs a `Functor` instance, pass `TE.Functor` instead of `TE.taskEitherSeq`
+ * (where `TE` is from `import TE from 'fp-ts/TaskEither'`)
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.taskEitherSeq = {
+    URI: exports.URI,
+    bimap: exports.mapBoth,
+    mapLeft: exports.mapError,
+    map: _map,
+    of: exports.of,
+    ap: _apSeq,
+    chain: exports.flatMap,
+    alt: _alt,
+    fromIO: exports.fromIO,
+    fromTask: exports.fromTask,
+    throwError: exports.throwError
+};
+/**
+ * Use [`getApplySemigroup`](./Apply.ts.html#getapplysemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getApplySemigroup = 
+/*#__PURE__*/ (0, Apply_1.getApplySemigroup)(exports.ApplySeq);
+/**
+ * Use [`getApplicativeMonoid`](./Applicative.ts.html#getapplicativemonoid) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+exports.getApplyMonoid = 
+/*#__PURE__*/ (0, Applicative_1.getApplicativeMonoid)(exports.ApplicativeSeq);
+/**
+ * Use [`getApplySemigroup`](./Apply.ts.html#getapplysemigroup) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+var getSemigroup = function (S) {
+    return (0, Apply_1.getApplySemigroup)(T.ApplySeq)(E.getSemigroup(S));
+};
+exports.getSemigroup = getSemigroup;
+/**
+ * Use [`getApplicativeTaskValidation`](#getapplicativetaskvalidation) and [`getAltTaskValidation`](#getalttaskvalidation) instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+function getTaskValidation(SE) {
+    var applicativeTaskValidation = getApplicativeTaskValidation(T.ApplicativePar, SE);
+    var altTaskValidation = getAltTaskValidation(SE);
+    return {
+        URI: exports.URI,
+        _E: undefined,
+        map: _map,
+        ap: applicativeTaskValidation.ap,
+        of: exports.of,
+        chain: exports.flatMap,
+        bimap: exports.mapBoth,
+        mapLeft: exports.mapError,
+        alt: altTaskValidation.alt,
+        fromIO: exports.fromIO,
+        fromTask: exports.fromTask,
+        throwError: exports.throwError
+    };
+}
+exports.getTaskValidation = getTaskValidation;
+
+
+/***/ }),
+
+/***/ 4384:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.filterE = exports.witherDefault = exports.wiltDefault = void 0;
+var _ = __importStar(__nccwpck_require__(1840));
+function wiltDefault(T, C) {
+    return function (F) {
+        var traverseF = T.traverse(F);
+        return function (wa, f) { return F.map(traverseF(wa, f), C.separate); };
+    };
+}
+exports.wiltDefault = wiltDefault;
+function witherDefault(T, C) {
+    return function (F) {
+        var traverseF = T.traverse(F);
+        return function (wa, f) { return F.map(traverseF(wa, f), C.compact); };
+    };
+}
+exports.witherDefault = witherDefault;
+function filterE(W) {
+    return function (F) {
+        var witherF = W.wither(F);
+        return function (predicate) { return function (ga) { return witherF(ga, function (a) { return F.map(predicate(a), function (b) { return (b ? _.some(a) : _.none); }); }); }; };
+    };
+}
+exports.filterE = filterE;
+
+
+/***/ }),
+
+/***/ 9734:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.guard = void 0;
+function guard(F, P) {
+    return function (b) { return (b ? P.of(undefined) : F.zero()); };
+}
+exports.guard = guard;
+
+
+/***/ }),
+
+/***/ 6985:
+/***/ (function(__unused_webpack_module, exports) {
+
+"use strict";
+
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.dual = exports.getEndomorphismMonoid = exports.not = exports.SK = exports.hole = exports.pipe = exports.untupled = exports.tupled = exports.absurd = exports.decrement = exports.increment = exports.tuple = exports.flow = exports.flip = exports.constVoid = exports.constUndefined = exports.constNull = exports.constFalse = exports.constTrue = exports.constant = exports.unsafeCoerce = exports.identity = exports.apply = exports.getRing = exports.getSemiring = exports.getMonoid = exports.getSemigroup = exports.getBooleanAlgebra = void 0;
+// -------------------------------------------------------------------------------------
+// instances
+// -------------------------------------------------------------------------------------
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+var getBooleanAlgebra = function (B) {
+    return function () { return ({
+        meet: function (x, y) { return function (a) { return B.meet(x(a), y(a)); }; },
+        join: function (x, y) { return function (a) { return B.join(x(a), y(a)); }; },
+        zero: function () { return B.zero; },
+        one: function () { return B.one; },
+        implies: function (x, y) { return function (a) { return B.implies(x(a), y(a)); }; },
+        not: function (x) { return function (a) { return B.not(x(a)); }; }
+    }); };
+};
+exports.getBooleanAlgebra = getBooleanAlgebra;
+/**
+ * Unary functions form a semigroup as long as you can provide a semigroup for the codomain.
+ *
+ * @example
+ * import { Predicate, getSemigroup } from 'fp-ts/function'
+ * import * as B from 'fp-ts/boolean'
+ *
+ * const f: Predicate<number> = (n) => n <= 2
+ * const g: Predicate<number> = (n) => n >= 0
+ *
+ * const S1 = getSemigroup(B.SemigroupAll)<number>()
+ *
+ * assert.deepStrictEqual(S1.concat(f, g)(1), true)
+ * assert.deepStrictEqual(S1.concat(f, g)(3), false)
+ *
+ * const S2 = getSemigroup(B.SemigroupAny)<number>()
+ *
+ * assert.deepStrictEqual(S2.concat(f, g)(1), true)
+ * assert.deepStrictEqual(S2.concat(f, g)(3), true)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+var getSemigroup = function (S) {
+    return function () { return ({
+        concat: function (f, g) { return function (a) { return S.concat(f(a), g(a)); }; }
+    }); };
+};
+exports.getSemigroup = getSemigroup;
+/**
+ * Unary functions form a monoid as long as you can provide a monoid for the codomain.
+ *
+ * @example
+ * import { Predicate } from 'fp-ts/Predicate'
+ * import { getMonoid } from 'fp-ts/function'
+ * import * as B from 'fp-ts/boolean'
+ *
+ * const f: Predicate<number> = (n) => n <= 2
+ * const g: Predicate<number> = (n) => n >= 0
+ *
+ * const M1 = getMonoid(B.MonoidAll)<number>()
+ *
+ * assert.deepStrictEqual(M1.concat(f, g)(1), true)
+ * assert.deepStrictEqual(M1.concat(f, g)(3), false)
+ *
+ * const M2 = getMonoid(B.MonoidAny)<number>()
+ *
+ * assert.deepStrictEqual(M2.concat(f, g)(1), true)
+ * assert.deepStrictEqual(M2.concat(f, g)(3), true)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+var getMonoid = function (M) {
+    var getSemigroupM = (0, exports.getSemigroup)(M);
+    return function () { return ({
+        concat: getSemigroupM().concat,
+        empty: function () { return M.empty; }
+    }); };
+};
+exports.getMonoid = getMonoid;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+var getSemiring = function (S) { return ({
+    add: function (f, g) { return function (x) { return S.add(f(x), g(x)); }; },
+    zero: function () { return S.zero; },
+    mul: function (f, g) { return function (x) { return S.mul(f(x), g(x)); }; },
+    one: function () { return S.one; }
+}); };
+exports.getSemiring = getSemiring;
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+var getRing = function (R) {
+    var S = (0, exports.getSemiring)(R);
+    return {
+        add: S.add,
+        mul: S.mul,
+        one: S.one,
+        zero: S.zero,
+        sub: function (f, g) { return function (x) { return R.sub(f(x), g(x)); }; }
+    };
+};
+exports.getRing = getRing;
+// -------------------------------------------------------------------------------------
+// utils
+// -------------------------------------------------------------------------------------
+/**
+ * @since 2.11.0
+ */
+var apply = function (a) {
+    return function (f) {
+        return f(a);
+    };
+};
+exports.apply = apply;
+/**
+ * @since 2.0.0
+ */
+function identity(a) {
+    return a;
+}
+exports.identity = identity;
+/**
+ * @since 2.0.0
+ */
+exports.unsafeCoerce = identity;
+/**
+ * @since 2.0.0
+ */
+function constant(a) {
+    return function () { return a; };
+}
+exports.constant = constant;
+/**
+ * A thunk that returns always `true`.
+ *
+ * @since 2.0.0
+ */
+exports.constTrue = constant(true);
+/**
+ * A thunk that returns always `false`.
+ *
+ * @since 2.0.0
+ */
+exports.constFalse = constant(false);
+/**
+ * A thunk that returns always `null`.
+ *
+ * @since 2.0.0
+ */
+exports.constNull = constant(null);
+/**
+ * A thunk that returns always `undefined`.
+ *
+ * @since 2.0.0
+ */
+exports.constUndefined = constant(undefined);
+/**
+ * A thunk that returns always `void`.
+ *
+ * @since 2.0.0
+ */
+exports.constVoid = exports.constUndefined;
+function flip(f) {
+    return function () {
+        var args = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            args[_i] = arguments[_i];
+        }
+        if (args.length > 1) {
+            return f(args[1], args[0]);
+        }
+        return function (a) { return f(a)(args[0]); };
+    };
+}
+exports.flip = flip;
+function flow(ab, bc, cd, de, ef, fg, gh, hi, ij) {
+    switch (arguments.length) {
+        case 1:
+            return ab;
+        case 2:
+            return function () {
+                return bc(ab.apply(this, arguments));
+            };
+        case 3:
+            return function () {
+                return cd(bc(ab.apply(this, arguments)));
+            };
+        case 4:
+            return function () {
+                return de(cd(bc(ab.apply(this, arguments))));
+            };
+        case 5:
+            return function () {
+                return ef(de(cd(bc(ab.apply(this, arguments)))));
+            };
+        case 6:
+            return function () {
+                return fg(ef(de(cd(bc(ab.apply(this, arguments))))));
+            };
+        case 7:
+            return function () {
+                return gh(fg(ef(de(cd(bc(ab.apply(this, arguments)))))));
+            };
+        case 8:
+            return function () {
+                return hi(gh(fg(ef(de(cd(bc(ab.apply(this, arguments))))))));
+            };
+        case 9:
+            return function () {
+                return ij(hi(gh(fg(ef(de(cd(bc(ab.apply(this, arguments)))))))));
+            };
+    }
+    return;
+}
+exports.flow = flow;
+/**
+ * @since 2.0.0
+ */
+function tuple() {
+    var t = [];
+    for (var _i = 0; _i < arguments.length; _i++) {
+        t[_i] = arguments[_i];
+    }
+    return t;
+}
+exports.tuple = tuple;
+/**
+ * @since 2.0.0
+ */
+function increment(n) {
+    return n + 1;
+}
+exports.increment = increment;
+/**
+ * @since 2.0.0
+ */
+function decrement(n) {
+    return n - 1;
+}
+exports.decrement = decrement;
+/**
+ * @since 2.0.0
+ */
+function absurd(_) {
+    throw new Error('Called `absurd` function which should be uncallable');
+}
+exports.absurd = absurd;
+/**
+ * Creates a tupled version of this function: instead of `n` arguments, it accepts a single tuple argument.
+ *
+ * @example
+ * import { tupled } from 'fp-ts/function'
+ *
+ * const add = tupled((x: number, y: number): number => x + y)
+ *
+ * assert.strictEqual(add([1, 2]), 3)
+ *
+ * @since 2.4.0
+ */
+function tupled(f) {
+    return function (a) { return f.apply(void 0, a); };
+}
+exports.tupled = tupled;
+/**
+ * Inverse function of `tupled`
+ *
+ * @since 2.4.0
+ */
+function untupled(f) {
+    return function () {
+        var a = [];
+        for (var _i = 0; _i < arguments.length; _i++) {
+            a[_i] = arguments[_i];
+        }
+        return f(a);
+    };
+}
+exports.untupled = untupled;
+function pipe(a, ab, bc, cd, de, ef, fg, gh, hi) {
+    switch (arguments.length) {
+        case 1:
+            return a;
+        case 2:
+            return ab(a);
+        case 3:
+            return bc(ab(a));
+        case 4:
+            return cd(bc(ab(a)));
+        case 5:
+            return de(cd(bc(ab(a))));
+        case 6:
+            return ef(de(cd(bc(ab(a)))));
+        case 7:
+            return fg(ef(de(cd(bc(ab(a))))));
+        case 8:
+            return gh(fg(ef(de(cd(bc(ab(a)))))));
+        case 9:
+            return hi(gh(fg(ef(de(cd(bc(ab(a))))))));
+        default: {
+            var ret = arguments[0];
+            for (var i = 1; i < arguments.length; i++) {
+                ret = arguments[i](ret);
+            }
+            return ret;
+        }
+    }
+}
+exports.pipe = pipe;
+/**
+ * Type hole simulation
+ *
+ * @since 2.7.0
+ */
+exports.hole = absurd;
+/**
+ * @since 2.11.0
+ */
+var SK = function (_, b) { return b; };
+exports.SK = SK;
+/**
+ * Use `Predicate` module instead.
+ *
+ * @category zone of death
+ * @since 2.0.0
+ * @deprecated
+ */
+function not(predicate) {
+    return function (a) { return !predicate(a); };
+}
+exports.not = not;
+/**
+ * Use `Endomorphism` module instead.
+ *
+ * @category zone of death
+ * @since 2.10.0
+ * @deprecated
+ */
+var getEndomorphismMonoid = function () { return ({
+    concat: function (first, second) { return flow(first, second); },
+    empty: identity
+}); };
+exports.getEndomorphismMonoid = getEndomorphismMonoid;
+/** @internal */
+var dual = function (arity, body) {
+    var isDataFirst = typeof arity === 'number' ? function (args) { return args.length >= arity; } : arity;
+    return function () {
+        var args = Array.from(arguments);
+        if (isDataFirst(arguments)) {
+            return body.apply(this, args);
+        }
+        return function (self) { return body.apply(void 0, __spreadArray([self], args, false)); };
+    };
+};
+exports.dual = dual;
+
+
+/***/ }),
+
+/***/ 1840:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __spreadArray = (this && this.__spreadArray) || function (to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.flatMapReader = exports.flatMapTask = exports.flatMapIO = exports.flatMapEither = exports.flatMapOption = exports.flatMapNullable = exports.liftOption = exports.liftNullable = exports.fromReadonlyNonEmptyArray = exports.has = exports.emptyRecord = exports.emptyReadonlyArray = exports.tail = exports.head = exports.isNonEmpty = exports.singleton = exports.right = exports.left = exports.isRight = exports.isLeft = exports.some = exports.none = exports.isSome = exports.isNone = void 0;
+var function_1 = __nccwpck_require__(6985);
+// -------------------------------------------------------------------------------------
+// Option
+// -------------------------------------------------------------------------------------
+/** @internal */
+var isNone = function (fa) { return fa._tag === 'None'; };
+exports.isNone = isNone;
+/** @internal */
+var isSome = function (fa) { return fa._tag === 'Some'; };
+exports.isSome = isSome;
+/** @internal */
+exports.none = { _tag: 'None' };
+/** @internal */
+var some = function (a) { return ({ _tag: 'Some', value: a }); };
+exports.some = some;
+// -------------------------------------------------------------------------------------
+// Either
+// -------------------------------------------------------------------------------------
+/** @internal */
+var isLeft = function (ma) { return ma._tag === 'Left'; };
+exports.isLeft = isLeft;
+/** @internal */
+var isRight = function (ma) { return ma._tag === 'Right'; };
+exports.isRight = isRight;
+/** @internal */
+var left = function (e) { return ({ _tag: 'Left', left: e }); };
+exports.left = left;
+/** @internal */
+var right = function (a) { return ({ _tag: 'Right', right: a }); };
+exports.right = right;
+// -------------------------------------------------------------------------------------
+// ReadonlyNonEmptyArray
+// -------------------------------------------------------------------------------------
+/** @internal */
+var singleton = function (a) { return [a]; };
+exports.singleton = singleton;
+/** @internal */
+var isNonEmpty = function (as) { return as.length > 0; };
+exports.isNonEmpty = isNonEmpty;
+/** @internal */
+var head = function (as) { return as[0]; };
+exports.head = head;
+/** @internal */
+var tail = function (as) { return as.slice(1); };
+exports.tail = tail;
+// -------------------------------------------------------------------------------------
+// empty
+// -------------------------------------------------------------------------------------
+/** @internal */
+exports.emptyReadonlyArray = [];
+/** @internal */
+exports.emptyRecord = {};
+// -------------------------------------------------------------------------------------
+// Record
+// -------------------------------------------------------------------------------------
+/** @internal */
+exports.has = Object.prototype.hasOwnProperty;
+// -------------------------------------------------------------------------------------
+// NonEmptyArray
+// -------------------------------------------------------------------------------------
+/** @internal */
+var fromReadonlyNonEmptyArray = function (as) { return __spreadArray([as[0]], as.slice(1), true); };
+exports.fromReadonlyNonEmptyArray = fromReadonlyNonEmptyArray;
+/** @internal */
+var liftNullable = function (F) {
+    return function (f, onNullable) {
+        return function () {
+            var a = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                a[_i] = arguments[_i];
+            }
+            var o = f.apply(void 0, a);
+            return F.fromEither(o == null ? (0, exports.left)(onNullable.apply(void 0, a)) : (0, exports.right)(o));
+        };
+    };
+};
+exports.liftNullable = liftNullable;
+/** @internal */
+var liftOption = function (F) {
+    return function (f, onNone) {
+        return function () {
+            var a = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                a[_i] = arguments[_i];
+            }
+            var o = f.apply(void 0, a);
+            return F.fromEither((0, exports.isNone)(o) ? (0, exports.left)(onNone.apply(void 0, a)) : (0, exports.right)(o.value));
+        };
+    };
+};
+exports.liftOption = liftOption;
+/** @internal */
+var flatMapNullable = function (F, M) {
+    return /*#__PURE__*/ (0, function_1.dual)(3, function (self, f, onNullable) {
+        return M.flatMap(self, (0, exports.liftNullable)(F)(f, onNullable));
+    });
+};
+exports.flatMapNullable = flatMapNullable;
+/** @internal */
+var flatMapOption = function (F, M) {
+    return /*#__PURE__*/ (0, function_1.dual)(3, function (self, f, onNone) { return M.flatMap(self, (0, exports.liftOption)(F)(f, onNone)); });
+};
+exports.flatMapOption = flatMapOption;
+/** @internal */
+var flatMapEither = function (F, M) {
+    return /*#__PURE__*/ (0, function_1.dual)(2, function (self, f) {
+        return M.flatMap(self, function (a) { return F.fromEither(f(a)); });
+    });
+};
+exports.flatMapEither = flatMapEither;
+/** @internal */
+var flatMapIO = function (F, M) {
+    return /*#__PURE__*/ (0, function_1.dual)(2, function (self, f) {
+        return M.flatMap(self, function (a) { return F.fromIO(f(a)); });
+    });
+};
+exports.flatMapIO = flatMapIO;
+/** @internal */
+var flatMapTask = function (F, M) {
+    return /*#__PURE__*/ (0, function_1.dual)(2, function (self, f) {
+        return M.flatMap(self, function (a) { return F.fromTask(f(a)); });
+    });
+};
+exports.flatMapTask = flatMapTask;
+/** @internal */
+var flatMapReader = function (F, M) {
+    return /*#__PURE__*/ (0, function_1.dual)(2, function (self, f) {
+        return M.flatMap(self, function (a) { return F.fromReader(f(a)); });
+    });
+};
+exports.flatMapReader = flatMapReader;
+
+
+/***/ }),
+
+/***/ 52:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Field = exports.MonoidProduct = exports.MonoidSum = exports.SemigroupProduct = exports.SemigroupSum = exports.MagmaSub = exports.Show = exports.Bounded = exports.Ord = exports.Eq = exports.isNumber = void 0;
+// -------------------------------------------------------------------------------------
+// refinements
+// -------------------------------------------------------------------------------------
+/**
+ * @category refinements
+ * @since 2.11.0
+ */
+var isNumber = function (u) { return typeof u === 'number'; };
+exports.isNumber = isNumber;
+// -------------------------------------------------------------------------------------
+// instances
+// -------------------------------------------------------------------------------------
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Eq = {
+    equals: function (first, second) { return first === second; }
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Ord = {
+    equals: exports.Eq.equals,
+    compare: function (first, second) { return (first < second ? -1 : first > second ? 1 : 0); }
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Bounded = {
+    equals: exports.Eq.equals,
+    compare: exports.Ord.compare,
+    top: Infinity,
+    bottom: -Infinity
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Show = {
+    show: function (n) { return JSON.stringify(n); }
+};
+/**
+ * @category instances
+ * @since 2.11.0
+ */
+exports.MagmaSub = {
+    concat: function (first, second) { return first - second; }
+};
+/**
+ * `number` semigroup under addition.
+ *
+ * @example
+ * import { SemigroupSum } from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(SemigroupSum.concat(2, 3), 5)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.SemigroupSum = {
+    concat: function (first, second) { return first + second; }
+};
+/**
+ * `number` semigroup under multiplication.
+ *
+ * @example
+ * import { SemigroupProduct } from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(SemigroupProduct.concat(2, 3), 6)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.SemigroupProduct = {
+    concat: function (first, second) { return first * second; }
+};
+/**
+ * `number` monoid under addition.
+ *
+ * The `empty` value is `0`.
+ *
+ * @example
+ * import { MonoidSum } from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(MonoidSum.concat(2, MonoidSum.empty), 2)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonoidSum = {
+    concat: exports.SemigroupSum.concat,
+    empty: 0
+};
+/**
+ * `number` monoid under multiplication.
+ *
+ * The `empty` value is `1`.
+ *
+ * @example
+ * import { MonoidProduct } from 'fp-ts/number'
+ *
+ * assert.deepStrictEqual(MonoidProduct.concat(2, MonoidProduct.empty), 2)
+ *
+ * @category instances
+ * @since 2.10.0
+ */
+exports.MonoidProduct = {
+    concat: exports.SemigroupProduct.concat,
+    empty: 1
+};
+/**
+ * @category instances
+ * @since 2.10.0
+ */
+exports.Field = {
+    add: exports.SemigroupSum.concat,
+    zero: 0,
+    mul: exports.SemigroupProduct.concat,
+    one: 1,
+    sub: exports.MagmaSub.concat,
+    degree: function (_) { return 1; },
+    div: function (first, second) { return first / second; },
+    mod: function (first, second) { return first % second; }
+};
+
+
+/***/ }),
+
+/***/ 7426:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+/*!
+ * mime-db
+ * Copyright(c) 2014 Jonathan Ong
+ * Copyright(c) 2015-2022 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+/**
+ * Module exports.
+ */
+
+module.exports = __nccwpck_require__(3765)
+
+
+/***/ }),
+
+/***/ 3583:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+/*!
+ * mime-types
+ * Copyright(c) 2014 Jonathan Ong
+ * Copyright(c) 2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+
+
+/**
+ * Module dependencies.
+ * @private
+ */
+
+var db = __nccwpck_require__(7426)
+var extname = (__nccwpck_require__(1017).extname)
+
+/**
+ * Module variables.
+ * @private
+ */
+
+var EXTRACT_TYPE_REGEXP = /^\s*([^;\s]*)(?:;|\s|$)/
+var TEXT_TYPE_REGEXP = /^text\//i
+
+/**
+ * Module exports.
+ * @public
+ */
+
+exports.charset = charset
+exports.charsets = { lookup: charset }
+exports.contentType = contentType
+exports.extension = extension
+exports.extensions = Object.create(null)
+exports.lookup = lookup
+exports.types = Object.create(null)
+
+// Populate the extensions/types maps
+populateMaps(exports.extensions, exports.types)
+
+/**
+ * Get the default charset for a MIME type.
+ *
+ * @param {string} type
+ * @return {boolean|string}
+ */
+
+function charset (type) {
+  if (!type || typeof type !== 'string') {
+    return false
+  }
+
+  // TODO: use media-typer
+  var match = EXTRACT_TYPE_REGEXP.exec(type)
+  var mime = match && db[match[1].toLowerCase()]
+
+  if (mime && mime.charset) {
+    return mime.charset
+  }
+
+  // default text/* to utf-8
+  if (match && TEXT_TYPE_REGEXP.test(match[1])) {
+    return 'UTF-8'
+  }
+
+  return false
+}
+
+/**
+ * Create a full Content-Type header given a MIME type or extension.
+ *
+ * @param {string} str
+ * @return {boolean|string}
+ */
+
+function contentType (str) {
+  // TODO: should this even be in this module?
+  if (!str || typeof str !== 'string') {
+    return false
+  }
+
+  var mime = str.indexOf('/') === -1
+    ? exports.lookup(str)
+    : str
+
+  if (!mime) {
+    return false
+  }
+
+  // TODO: use content-type or other module
+  if (mime.indexOf('charset') === -1) {
+    var charset = exports.charset(mime)
+    if (charset) mime += '; charset=' + charset.toLowerCase()
+  }
+
+  return mime
+}
+
+/**
+ * Get the default extension for a MIME type.
+ *
+ * @param {string} type
+ * @return {boolean|string}
+ */
+
+function extension (type) {
+  if (!type || typeof type !== 'string') {
+    return false
+  }
+
+  // TODO: use media-typer
+  var match = EXTRACT_TYPE_REGEXP.exec(type)
+
+  // get extensions
+  var exts = match && exports.extensions[match[1].toLowerCase()]
+
+  if (!exts || !exts.length) {
+    return false
+  }
+
+  return exts[0]
+}
+
+/**
+ * Lookup the MIME type for a file path/extension.
+ *
+ * @param {string} path
+ * @return {boolean|string}
+ */
+
+function lookup (path) {
+  if (!path || typeof path !== 'string') {
+    return false
+  }
+
+  // get the extension ("ext" or ".ext" or full path)
+  var extension = extname('x.' + path)
+    .toLowerCase()
+    .substr(1)
+
+  if (!extension) {
+    return false
+  }
+
+  return exports.types[extension] || false
+}
+
+/**
+ * Populate the extensions and types maps.
+ * @private
+ */
+
+function populateMaps (extensions, types) {
+  // source preference (least -> most)
+  var preference = ['nginx', 'apache', undefined, 'iana']
+
+  Object.keys(db).forEach(function forEachMimeType (type) {
+    var mime = db[type]
+    var exts = mime.extensions
+
+    if (!exts || !exts.length) {
+      return
+    }
+
+    // mime -> extensions
+    extensions[type] = exts
+
+    // extension -> mime
+    for (var i = 0; i < exts.length; i++) {
+      var extension = exts[i]
+
+      if (types[extension]) {
+        var from = preference.indexOf(db[types[extension]].source)
+        var to = preference.indexOf(mime.source)
+
+        if (types[extension] !== 'application/octet-stream' &&
+          (from > to || (from === to && types[extension].substr(0, 12) === 'application/'))) {
+          // skip the remapping
+          continue
+        }
+      }
+
+      // set the extension -> mime
+      types[extension] = type
+    }
+  })
+}
+
+
+/***/ }),
+
+/***/ 2908:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+exports.OAuth = __nccwpck_require__(9554).OAuth;
+exports.OAuthEcho = __nccwpck_require__(9554).OAuthEcho;
+exports.OAuth2 = __nccwpck_require__(6280).OAuth2;
+
+/***/ }),
+
+/***/ 9163:
+/***/ ((module) => {
+
+// Returns true if this is a host that closes *before* it ends?!?!
+module.exports.isAnEarlyCloseHost= function( hostName ) {
+  return hostName && hostName.match(".*google(apis)?.com$")
+}
+
+/***/ }),
+
+/***/ 9554:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+var crypto= __nccwpck_require__(6113),
+    sha1= __nccwpck_require__(3792),
+    http= __nccwpck_require__(3685),
+    https= __nccwpck_require__(5687),
+    URL= __nccwpck_require__(7310),
+    querystring= __nccwpck_require__(3477),
+    OAuthUtils= __nccwpck_require__(9163);
+
+exports.OAuth= function(requestUrl, accessUrl, consumerKey, consumerSecret, version, authorize_callback, signatureMethod, nonceSize, customHeaders) {
+  this._isEcho = false;
+
+  this._requestUrl= requestUrl;
+  this._accessUrl= accessUrl;
+  this._consumerKey= consumerKey;
+  this._consumerSecret= this._encodeData( consumerSecret );
+  if (signatureMethod == "RSA-SHA1") {
+    this._privateKey = consumerSecret;
+  }
+  this._version= version;
+  if( authorize_callback === undefined ) {
+    this._authorize_callback= "oob";
+  }
+  else {
+    this._authorize_callback= authorize_callback;
+  }
+
+  if( signatureMethod != "PLAINTEXT" && signatureMethod != "HMAC-SHA1" && signatureMethod != "RSA-SHA1")
+    throw new Error("Un-supported signature method: " + signatureMethod )
+  this._signatureMethod= signatureMethod;
+  this._nonceSize= nonceSize || 32;
+  this._headers= customHeaders || {"Accept" : "*/*",
+                                   "Connection" : "close",
+                                   "User-Agent" : "Node authentication"}
+  this._clientOptions= this._defaultClientOptions= {"requestTokenHttpMethod": "POST",
+                                                    "accessTokenHttpMethod": "POST",
+                                                    "followRedirects": true};
+  this._oauthParameterSeperator = ",";
+};
+
+exports.OAuthEcho= function(realm, verify_credentials, consumerKey, consumerSecret, version, signatureMethod, nonceSize, customHeaders) {
+  this._isEcho = true;
+
+  this._realm= realm;
+  this._verifyCredentials = verify_credentials;
+  this._consumerKey= consumerKey;
+  this._consumerSecret= this._encodeData( consumerSecret );
+  if (signatureMethod == "RSA-SHA1") {
+    this._privateKey = consumerSecret;
+  }
+  this._version= version;
+
+  if( signatureMethod != "PLAINTEXT" && signatureMethod != "HMAC-SHA1" && signatureMethod != "RSA-SHA1")
+    throw new Error("Un-supported signature method: " + signatureMethod );
+  this._signatureMethod= signatureMethod;
+  this._nonceSize= nonceSize || 32;
+  this._headers= customHeaders || {"Accept" : "*/*",
+                                   "Connection" : "close",
+                                   "User-Agent" : "Node authentication"};
+  this._oauthParameterSeperator = ",";
+}
+
+exports.OAuthEcho.prototype = exports.OAuth.prototype;
+
+exports.OAuth.prototype._getTimestamp= function() {
+  return Math.floor( (new Date()).getTime() / 1000 );
+}
+
+exports.OAuth.prototype._encodeData= function(toEncode){
+ if( toEncode == null || toEncode == "" ) return ""
+ else {
+    var result= encodeURIComponent(toEncode);
+    // Fix the mismatch between OAuth's  RFC3986's and Javascript's beliefs in what is right and wrong ;)
+    return result.replace(/\!/g, "%21")
+                 .replace(/\'/g, "%27")
+                 .replace(/\(/g, "%28")
+                 .replace(/\)/g, "%29")
+                 .replace(/\*/g, "%2A");
+ }
+}
+
+exports.OAuth.prototype._decodeData= function(toDecode) {
+  if( toDecode != null ) {
+    toDecode = toDecode.replace(/\+/g, " ");
+  }
+  return decodeURIComponent( toDecode);
+}
+
+exports.OAuth.prototype._getSignature= function(method, url, parameters, tokenSecret) {
+  var signatureBase= this._createSignatureBase(method, url, parameters);
+  return this._createSignature( signatureBase, tokenSecret );
+}
+
+exports.OAuth.prototype._normalizeUrl= function(url) {
+  var parsedUrl= URL.parse(url, true)
+   var port ="";
+   if( parsedUrl.port ) {
+     if( (parsedUrl.protocol == "http:" && parsedUrl.port != "80" ) ||
+         (parsedUrl.protocol == "https:" && parsedUrl.port != "443") ) {
+           port= ":" + parsedUrl.port;
+         }
+   }
+
+  if( !parsedUrl.pathname  || parsedUrl.pathname == "" ) parsedUrl.pathname ="/";
+
+  return parsedUrl.protocol + "//" + parsedUrl.hostname + port + parsedUrl.pathname;
+}
+
+// Is the parameter considered an OAuth parameter
+exports.OAuth.prototype._isParameterNameAnOAuthParameter= function(parameter) {
+  var m = parameter.match('^oauth_');
+  if( m && ( m[0] === "oauth_" ) ) {
+    return true;
+  }
+  else {
+    return false;
+  }
+};
+
+// build the OAuth request authorization header
+exports.OAuth.prototype._buildAuthorizationHeaders= function(orderedParameters) {
+  var authHeader="OAuth ";
+  if( this._isEcho ) {
+    authHeader += 'realm="' + this._realm + '",';
+  }
+
+  for( var i= 0 ; i < orderedParameters.length; i++) {
+     // Whilst the all the parameters should be included within the signature, only the oauth_ arguments
+     // should appear within the authorization header.
+     if( this._isParameterNameAnOAuthParameter(orderedParameters[i][0]) ) {
+      authHeader+= "" + this._encodeData(orderedParameters[i][0])+"=\""+ this._encodeData(orderedParameters[i][1])+"\""+ this._oauthParameterSeperator;
+     }
+  }
+
+  authHeader= authHeader.substring(0, authHeader.length-this._oauthParameterSeperator.length);
+  return authHeader;
+}
+
+// Takes an object literal that represents the arguments, and returns an array
+// of argument/value pairs.
+exports.OAuth.prototype._makeArrayOfArgumentsHash= function(argumentsHash) {
+  var argument_pairs= [];
+  for(var key in argumentsHash ) {
+    if (argumentsHash.hasOwnProperty(key)) {
+       var value= argumentsHash[key];
+       if( Array.isArray(value) ) {
+         for(var i=0;i<value.length;i++) {
+           argument_pairs[argument_pairs.length]= [key, value[i]];
+         }
+       }
+       else {
+         argument_pairs[argument_pairs.length]= [key, value];
+       }
+    }
+  }
+  return argument_pairs;
+}
+
+// Sorts the encoded key value pairs by encoded name, then encoded value
+exports.OAuth.prototype._sortRequestParams= function(argument_pairs) {
+  // Sort by name, then value.
+  argument_pairs.sort(function(a,b) {
+      if ( a[0]== b[0] )  {
+        return a[1] < b[1] ? -1 : 1;
+      }
+      else return a[0] < b[0] ? -1 : 1;
+  });
+
+  return argument_pairs;
+}
+
+exports.OAuth.prototype._normaliseRequestParams= function(args) {
+  var argument_pairs= this._makeArrayOfArgumentsHash(args);
+  // First encode them #3.4.1.3.2 .1
+  for(var i=0;i<argument_pairs.length;i++) {
+    argument_pairs[i][0]= this._encodeData( argument_pairs[i][0] );
+    argument_pairs[i][1]= this._encodeData( argument_pairs[i][1] );
+  }
+
+  // Then sort them #3.4.1.3.2 .2
+  argument_pairs= this._sortRequestParams( argument_pairs );
+
+  // Then concatenate together #3.4.1.3.2 .3 & .4
+  var args= "";
+  for(var i=0;i<argument_pairs.length;i++) {
+      args+= argument_pairs[i][0];
+      args+= "="
+      args+= argument_pairs[i][1];
+      if( i < argument_pairs.length-1 ) args+= "&";
+  }
+  return args;
+}
+
+exports.OAuth.prototype._createSignatureBase= function(method, url, parameters) {
+  url= this._encodeData( this._normalizeUrl(url) );
+  parameters= this._encodeData( parameters );
+  return method.toUpperCase() + "&" + url + "&" + parameters;
+}
+
+exports.OAuth.prototype._createSignature= function(signatureBase, tokenSecret) {
+   if( tokenSecret === undefined ) var tokenSecret= "";
+   else tokenSecret= this._encodeData( tokenSecret );
+   // consumerSecret is already encoded
+   var key= this._consumerSecret + "&" + tokenSecret;
+
+   var hash= ""
+   if( this._signatureMethod == "PLAINTEXT" ) {
+     hash= key;
+   }
+   else if (this._signatureMethod == "RSA-SHA1") {
+     key = this._privateKey || "";
+     hash= crypto.createSign("RSA-SHA1").update(signatureBase).sign(key, 'base64');
+   }
+   else {
+       if( crypto.Hmac ) {
+         hash = crypto.createHmac("sha1", key).update(signatureBase).digest("base64");
+       }
+       else {
+         hash= sha1.HMACSHA1(key, signatureBase);
+       }
+   }
+   return hash;
+}
+exports.OAuth.prototype.NONCE_CHARS= ['a','b','c','d','e','f','g','h','i','j','k','l','m','n',
+              'o','p','q','r','s','t','u','v','w','x','y','z','A','B',
+              'C','D','E','F','G','H','I','J','K','L','M','N','O','P',
+              'Q','R','S','T','U','V','W','X','Y','Z','0','1','2','3',
+              '4','5','6','7','8','9'];
+
+exports.OAuth.prototype._getNonce= function(nonceSize) {
+   var result = [];
+   var chars= this.NONCE_CHARS;
+   var char_pos;
+   var nonce_chars_length= chars.length;
+
+   for (var i = 0; i < nonceSize; i++) {
+       char_pos= Math.floor(Math.random() * nonce_chars_length);
+       result[i]=  chars[char_pos];
+   }
+   return result.join('');
+}
+
+exports.OAuth.prototype._createClient= function( port, hostname, method, path, headers, sslEnabled ) {
+  var options = {
+    host: hostname,
+    port: port,
+    path: path,
+    method: method,
+    headers: headers
+  };
+  var httpModel;
+  if( sslEnabled ) {
+    httpModel= https;
+  } else {
+    httpModel= http;
+  }
+  return httpModel.request(options);
+}
+
+exports.OAuth.prototype._prepareParameters= function( oauth_token, oauth_token_secret, method, url, extra_params ) {
+  var oauthParameters= {
+      "oauth_timestamp":        this._getTimestamp(),
+      "oauth_nonce":            this._getNonce(this._nonceSize),
+      "oauth_version":          this._version,
+      "oauth_signature_method": this._signatureMethod,
+      "oauth_consumer_key":     this._consumerKey
+  };
+
+  if( oauth_token ) {
+    oauthParameters["oauth_token"]= oauth_token;
+  }
+
+  var sig;
+  if( this._isEcho ) {
+    sig = this._getSignature( "GET",  this._verifyCredentials,  this._normaliseRequestParams(oauthParameters), oauth_token_secret);
+  }
+  else {
+    if( extra_params ) {
+      for( var key in extra_params ) {
+        if (extra_params.hasOwnProperty(key)) oauthParameters[key]= extra_params[key];
+      }
+    }
+    var parsedUrl= URL.parse( url, false );
+
+    if( parsedUrl.query ) {
+      var key2;
+      var extraParameters= querystring.parse(parsedUrl.query);
+      for(var key in extraParameters ) {
+        var value= extraParameters[key];
+          if( typeof value == "object" ){
+            // TODO: This probably should be recursive
+            for(key2 in value){
+              oauthParameters[key + "[" + key2 + "]"] = value[key2];
+            }
+          } else {
+            oauthParameters[key]= value;
+          }
+        }
+    }
+
+    sig = this._getSignature( method,  url,  this._normaliseRequestParams(oauthParameters), oauth_token_secret);
+  }
+
+  var orderedParameters= this._sortRequestParams( this._makeArrayOfArgumentsHash(oauthParameters) );
+  orderedParameters[orderedParameters.length]= ["oauth_signature", sig];
+  return orderedParameters;
+}
+
+exports.OAuth.prototype._performSecureRequest= function( oauth_token, oauth_token_secret, method, url, extra_params, post_body, post_content_type,  callback ) {
+  var orderedParameters= this._prepareParameters(oauth_token, oauth_token_secret, method, url, extra_params);
+
+  if( !post_content_type ) {
+    post_content_type= "application/x-www-form-urlencoded";
+  }
+  var parsedUrl= URL.parse( url, false );
+  if( parsedUrl.protocol == "http:" && !parsedUrl.port ) parsedUrl.port= 80;
+  if( parsedUrl.protocol == "https:" && !parsedUrl.port ) parsedUrl.port= 443;
+
+  var headers= {};
+  var authorization = this._buildAuthorizationHeaders(orderedParameters);
+  if ( this._isEcho ) {
+    headers["X-Verify-Credentials-Authorization"]= authorization;
+  }
+  else {
+    headers["Authorization"]= authorization;
+  }
+
+  headers["Host"] = parsedUrl.host
+
+  for( var key in this._headers ) {
+    if (this._headers.hasOwnProperty(key)) {
+      headers[key]= this._headers[key];
+    }
+  }
+
+  // Filter out any passed extra_params that are really to do with OAuth
+  for(var key in extra_params) {
+    if( this._isParameterNameAnOAuthParameter( key ) ) {
+      delete extra_params[key];
+    }
+  }
+
+  if( (method == "POST" || method == "PUT")  && ( post_body == null && extra_params != null) ) {
+    // Fix the mismatch between the output of querystring.stringify() and this._encodeData()
+    post_body= querystring.stringify(extra_params)
+                       .replace(/\!/g, "%21")
+                       .replace(/\'/g, "%27")
+                       .replace(/\(/g, "%28")
+                       .replace(/\)/g, "%29")
+                       .replace(/\*/g, "%2A");
+  }
+
+  if( post_body ) {
+      if ( Buffer.isBuffer(post_body) ) {
+          headers["Content-length"]= post_body.length;
+      } else {
+          headers["Content-length"]= Buffer.byteLength(post_body);
+      }
+  } else {
+      headers["Content-length"]= 0;
+  }
+
+  headers["Content-Type"]= post_content_type;
+
+  var path;
+  if( !parsedUrl.pathname  || parsedUrl.pathname == "" ) parsedUrl.pathname ="/";
+  if( parsedUrl.query ) path= parsedUrl.pathname + "?"+ parsedUrl.query ;
+  else path= parsedUrl.pathname;
+
+  var request;
+  if( parsedUrl.protocol == "https:" ) {
+    request= this._createClient(parsedUrl.port, parsedUrl.hostname, method, path, headers, true);
+  }
+  else {
+    request= this._createClient(parsedUrl.port, parsedUrl.hostname, method, path, headers);
+  }
+
+  var clientOptions = this._clientOptions;
+  if( callback ) {
+    var data="";
+    var self= this;
+
+    // Some hosts *cough* google appear to close the connection early / send no content-length header
+    // allow this behaviour.
+    var allowEarlyClose= OAuthUtils.isAnEarlyCloseHost( parsedUrl.hostname );
+    var callbackCalled= false;
+    var passBackControl = function( response ) {
+      if(!callbackCalled) {
+        callbackCalled= true;
+        if ( response.statusCode >= 200 && response.statusCode <= 299 ) {
+          callback(null, data, response);
+        } else {
+          // Follow 301 or 302 redirects with Location HTTP header
+          if((response.statusCode == 301 || response.statusCode == 302) && clientOptions.followRedirects && response.headers && response.headers.location) {
+            self._performSecureRequest( oauth_token, oauth_token_secret, method, response.headers.location, extra_params, post_body, post_content_type,  callback);
+          }
+          else {
+            callback({ statusCode: response.statusCode, data: data }, data, response);
+          }
+        }
+      }
+    }
+
+    request.on('response', function (response) {
+      response.setEncoding('utf8');
+      response.on('data', function (chunk) {
+        data+=chunk;
+      });
+      response.on('end', function () {
+        passBackControl( response );
+      });
+      response.on('close', function () {
+        if( allowEarlyClose ) {
+          passBackControl( response );
+        }
+      });
+    });
+
+    request.on("error", function(err) {
+      if(!callbackCalled) {
+        callbackCalled= true;
+        callback( err )
+      }
+    });
+
+    if( (method == "POST" || method =="PUT") && post_body != null && post_body != "" ) {
+      request.write(post_body);
+    }
+    request.end();
+  }
+  else {
+    if( (method == "POST" || method =="PUT") && post_body != null && post_body != "" ) {
+      request.write(post_body);
+    }
+    return request;
+  }
+
+  return;
+}
+
+exports.OAuth.prototype.setClientOptions= function(options) {
+  var key,
+      mergedOptions= {},
+      hasOwnProperty= Object.prototype.hasOwnProperty;
+
+  for( key in this._defaultClientOptions ) {
+    if( !hasOwnProperty.call(options, key) ) {
+      mergedOptions[key]= this._defaultClientOptions[key];
+    } else {
+      mergedOptions[key]= options[key];
+    }
+  }
+
+  this._clientOptions= mergedOptions;
+};
+
+exports.OAuth.prototype.getOAuthAccessToken= function(oauth_token, oauth_token_secret, oauth_verifier,  callback) {
+  var extraParams= {};
+  if( typeof oauth_verifier == "function" ) {
+    callback= oauth_verifier;
+  } else {
+    extraParams.oauth_verifier= oauth_verifier;
+  }
+
+   this._performSecureRequest( oauth_token, oauth_token_secret, this._clientOptions.accessTokenHttpMethod, this._accessUrl, extraParams, null, null, function(error, data, response) {
+         if( error ) callback(error);
+         else {
+           var results= querystring.parse( data );
+           var oauth_access_token= results["oauth_token"];
+           delete results["oauth_token"];
+           var oauth_access_token_secret= results["oauth_token_secret"];
+           delete results["oauth_token_secret"];
+           callback(null, oauth_access_token, oauth_access_token_secret, results );
+         }
+   })
+}
+
+// Deprecated
+exports.OAuth.prototype.getProtectedResource= function(url, method, oauth_token, oauth_token_secret, callback) {
+  this._performSecureRequest( oauth_token, oauth_token_secret, method, url, null, "", null, callback );
+}
+
+exports.OAuth.prototype["delete"]= function(url, oauth_token, oauth_token_secret, callback) {
+  return this._performSecureRequest( oauth_token, oauth_token_secret, "DELETE", url, null, "", null, callback );
+}
+
+exports.OAuth.prototype.get= function(url, oauth_token, oauth_token_secret, callback) {
+  return this._performSecureRequest( oauth_token, oauth_token_secret, "GET", url, null, "", null, callback );
+}
+
+exports.OAuth.prototype._putOrPost= function(method, url, oauth_token, oauth_token_secret, post_body, post_content_type, callback) {
+  var extra_params= null;
+  if( typeof post_content_type == "function" ) {
+    callback= post_content_type;
+    post_content_type= null;
+  }
+  if ( typeof post_body != "string" && !Buffer.isBuffer(post_body) ) {
+    post_content_type= "application/x-www-form-urlencoded"
+    extra_params= post_body;
+    post_body= null;
+  }
+  return this._performSecureRequest( oauth_token, oauth_token_secret, method, url, extra_params, post_body, post_content_type, callback );
+}
+
+
+exports.OAuth.prototype.put= function(url, oauth_token, oauth_token_secret, post_body, post_content_type, callback) {
+  return this._putOrPost("PUT", url, oauth_token, oauth_token_secret, post_body, post_content_type, callback);
+}
+
+exports.OAuth.prototype.post= function(url, oauth_token, oauth_token_secret, post_body, post_content_type, callback) {
+  return this._putOrPost("POST", url, oauth_token, oauth_token_secret, post_body, post_content_type, callback);
+}
+
+/**
+ * Gets a request token from the OAuth provider and passes that information back
+ * to the calling code.
+ *
+ * The callback should expect a function of the following form:
+ *
+ * function(err, token, token_secret, parsedQueryString) {}
+ *
+ * This method has optional parameters so can be called in the following 2 ways:
+ *
+ * 1) Primary use case: Does a basic request with no extra parameters
+ *  getOAuthRequestToken( callbackFunction )
+ *
+ * 2) As above but allows for provision of extra parameters to be sent as part of the query to the server.
+ *  getOAuthRequestToken( extraParams, callbackFunction )
+ *
+ * N.B. This method will HTTP POST verbs by default, if you wish to override this behaviour you will
+ * need to provide a requestTokenHttpMethod option when creating the client.
+ *
+ **/
+exports.OAuth.prototype.getOAuthRequestToken= function( extraParams, callback ) {
+   if( typeof extraParams == "function" ){
+     callback = extraParams;
+     extraParams = {};
+   }
+  // Callbacks are 1.0A related
+  if( this._authorize_callback ) {
+    extraParams["oauth_callback"]= this._authorize_callback;
+  }
+  this._performSecureRequest( null, null, this._clientOptions.requestTokenHttpMethod, this._requestUrl, extraParams, null, null, function(error, data, response) {
+    if( error ) callback(error);
+    else {
+      var results= querystring.parse(data);
+
+      var oauth_token= results["oauth_token"];
+      var oauth_token_secret= results["oauth_token_secret"];
+      delete results["oauth_token"];
+      delete results["oauth_token_secret"];
+      callback(null, oauth_token, oauth_token_secret,  results );
+    }
+  });
+}
+
+exports.OAuth.prototype.signUrl= function(url, oauth_token, oauth_token_secret, method) {
+
+  if( method === undefined ) {
+    var method= "GET";
+  }
+
+  var orderedParameters= this._prepareParameters(oauth_token, oauth_token_secret, method, url, {});
+  var parsedUrl= URL.parse( url, false );
+
+  var query="";
+  for( var i= 0 ; i < orderedParameters.length; i++) {
+    query+= orderedParameters[i][0]+"="+ this._encodeData(orderedParameters[i][1]) + "&";
+  }
+  query= query.substring(0, query.length-1);
+
+  return parsedUrl.protocol + "//"+ parsedUrl.host + parsedUrl.pathname + "?" + query;
+};
+
+exports.OAuth.prototype.authHeader= function(url, oauth_token, oauth_token_secret, method) {
+  if( method === undefined ) {
+    var method= "GET";
+  }
+
+  var orderedParameters= this._prepareParameters(oauth_token, oauth_token_secret, method, url, {});
+  return this._buildAuthorizationHeaders(orderedParameters);
+};
+
+
+/***/ }),
+
+/***/ 6280:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+var querystring= __nccwpck_require__(3477),
+    crypto= __nccwpck_require__(6113),
+    https= __nccwpck_require__(5687),
+    http= __nccwpck_require__(3685),
+    URL= __nccwpck_require__(7310),
+    OAuthUtils= __nccwpck_require__(9163);
+
+exports.OAuth2= function(clientId, clientSecret, baseSite, authorizePath, accessTokenPath, customHeaders) {
+  this._clientId= clientId;
+  this._clientSecret= clientSecret;
+  this._baseSite= baseSite;
+  this._authorizeUrl= authorizePath || "/oauth/authorize";
+  this._accessTokenUrl= accessTokenPath || "/oauth/access_token";
+  this._accessTokenName= "access_token";
+  this._authMethod= "Bearer";
+  this._customHeaders = customHeaders || {};
+  this._useAuthorizationHeaderForGET= false;
+
+  //our agent
+  this._agent = undefined;
+};
+
+// Allows you to set an agent to use instead of the default HTTP or
+// HTTPS agents. Useful when dealing with your own certificates.
+exports.OAuth2.prototype.setAgent = function(agent) {
+  this._agent = agent;
+};
+
+// This 'hack' method is required for sites that don't use
+// 'access_token' as the name of the access token (for requests).
+// ( http://tools.ietf.org/html/draft-ietf-oauth-v2-16#section-7 )
+// it isn't clear what the correct value should be atm, so allowing
+// for specific (temporary?) override for now.
+exports.OAuth2.prototype.setAccessTokenName= function ( name ) {
+  this._accessTokenName= name;
+}
+
+// Sets the authorization method for Authorization header.
+// e.g. Authorization: Bearer <token>  # "Bearer" is the authorization method.
+exports.OAuth2.prototype.setAuthMethod = function ( authMethod ) {
+  this._authMethod = authMethod;
+};
+
+
+// If you use the OAuth2 exposed 'get' method (and don't construct your own _request call )
+// this will specify whether to use an 'Authorize' header instead of passing the access_token as a query parameter
+exports.OAuth2.prototype.useAuthorizationHeaderforGET = function(useIt) {
+  this._useAuthorizationHeaderForGET= useIt;
+}
+
+exports.OAuth2.prototype._getAccessTokenUrl= function() {
+  return this._baseSite + this._accessTokenUrl; /* + "?" + querystring.stringify(params); */
+}
+
+// Build the authorization header. In particular, build the part after the colon.
+// e.g. Authorization: Bearer <token>  # Build "Bearer <token>"
+exports.OAuth2.prototype.buildAuthHeader= function(token) {
+  return this._authMethod + ' ' + token;
+};
+
+exports.OAuth2.prototype._chooseHttpLibrary= function( parsedUrl ) {
+  var http_library= https;
+  // As this is OAUth2, we *assume* https unless told explicitly otherwise.
+  if( parsedUrl.protocol != "https:" ) {
+    http_library= http;
+  }
+  return http_library;
+};
+
+exports.OAuth2.prototype._request= function(method, url, headers, post_body, access_token, callback) {
+
+  var parsedUrl= URL.parse( url, true );
+  if( parsedUrl.protocol == "https:" && !parsedUrl.port ) {
+    parsedUrl.port= 443;
+  }
+
+  var http_library= this._chooseHttpLibrary( parsedUrl );
+
+
+  var realHeaders= {};
+  for( var key in this._customHeaders ) {
+    realHeaders[key]= this._customHeaders[key];
+  }
+  if( headers ) {
+    for(var key in headers) {
+      realHeaders[key] = headers[key];
+    }
+  }
+  realHeaders['Host']= parsedUrl.host;
+
+  if (!realHeaders['User-Agent']) {
+    realHeaders['User-Agent'] = 'Node-oauth';
+  }
+
+  if( post_body ) {
+      if ( Buffer.isBuffer(post_body) ) {
+          realHeaders["Content-Length"]= post_body.length;
+      } else {
+          realHeaders["Content-Length"]= Buffer.byteLength(post_body);
+      }
+  } else {
+      realHeaders["Content-length"]= 0;
+  }
+
+  if( access_token && !('Authorization' in realHeaders)) {
+    if( ! parsedUrl.query ) parsedUrl.query= {};
+    parsedUrl.query[this._accessTokenName]= access_token;
+  }
+
+  var queryStr= querystring.stringify(parsedUrl.query);
+  if( queryStr ) queryStr=  "?" + queryStr;
+  var options = {
+    host:parsedUrl.hostname,
+    port: parsedUrl.port,
+    path: parsedUrl.pathname + queryStr,
+    method: method,
+    headers: realHeaders
+  };
+
+  this._executeRequest( http_library, options, post_body, callback );
+}
+
+exports.OAuth2.prototype._executeRequest= function( http_library, options, post_body, callback ) {
+  // Some hosts *cough* google appear to close the connection early / send no content-length header
+  // allow this behaviour.
+  var allowEarlyClose= OAuthUtils.isAnEarlyCloseHost(options.host);
+  var callbackCalled= false;
+  function passBackControl( response, result ) {
+    if(!callbackCalled) {
+      callbackCalled=true;
+      if( !(response.statusCode >= 200 && response.statusCode <= 299) && (response.statusCode != 301) && (response.statusCode != 302) ) {
+        callback({ statusCode: response.statusCode, data: result });
+      } else {
+        callback(null, result, response);
+      }
+    }
+  }
+
+  var result= "";
+
+  //set the agent on the request options
+  if (this._agent) {
+    options.agent = this._agent;
+  }
+
+  var request = http_library.request(options);
+  request.on('response', function (response) {
+    response.on("data", function (chunk) {
+      result+= chunk
+    });
+    response.on("close", function (err) {
+      if( allowEarlyClose ) {
+        passBackControl( response, result );
+      }
+    });
+    response.addListener("end", function () {
+      passBackControl( response, result );
+    });
+  });
+  request.on('error', function(e) {
+    // `www.googleapis.com` does `ECONNRESET` just after data is received in `passBackControl`
+    // this prevents the callback from being called twice, first in passBackControl and second time in here
+    // see also NodeJS Stream documentation: "The 'error' event may be emitted by a Readable implementation at any time"
+    if(!callbackCalled) {
+      callbackCalled= true;
+      callback(e);
+    }
+  });
+
+  if( (options.method == 'POST' || options.method == 'PUT') && post_body ) {
+     request.write(post_body);
+  }
+  request.end();
+}
+
+exports.OAuth2.prototype.getAuthorizeUrl= function( params ) {
+  var params= params || {};
+  params['client_id'] = this._clientId;
+  return this._baseSite + this._authorizeUrl + "?" + querystring.stringify(params);
+}
+
+exports.OAuth2.prototype.getOAuthAccessToken= function(code, params, callback) {
+  var params= params || {};
+  params['client_id'] = this._clientId;
+  params['client_secret'] = this._clientSecret;
+  var codeParam = (params.grant_type === 'refresh_token') ? 'refresh_token' : 'code';
+  params[codeParam]= code;
+
+  var post_data= querystring.stringify( params );
+  var post_headers= {
+       'Content-Type': 'application/x-www-form-urlencoded'
+   };
+
+
+  this._request("POST", this._getAccessTokenUrl(), post_headers, post_data, null, function(error, data, response) {
+    if( error )  callback(error);
+    else {
+      var results;
+      try {
+        // As of http://tools.ietf.org/html/draft-ietf-oauth-v2-07
+        // responses should be in JSON
+        results= JSON.parse( data );
+      }
+      catch(e) {
+        // .... However both Facebook + Github currently use rev05 of the spec
+        // and neither seem to specify a content-type correctly in their response headers :(
+        // clients of these services will suffer a *minor* performance cost of the exception
+        // being thrown
+        results= querystring.parse( data );
+      }
+      var access_token= results["access_token"];
+      var refresh_token= results["refresh_token"];
+      delete results["refresh_token"];
+      callback(null, access_token, refresh_token, results); // callback results =-=
+    }
+  });
+}
+
+// Deprecated
+exports.OAuth2.prototype.getProtectedResource= function(url, access_token, callback) {
+  this._request("GET", url, {}, "", access_token, callback );
+}
+
+exports.OAuth2.prototype.get= function(url, access_token, callback) {
+  if( this._useAuthorizationHeaderForGET ) {
+    var headers= {'Authorization': this.buildAuthHeader(access_token) }
+    access_token= null;
+  }
+  else {
+    headers= {};
+  }
+  this._request("GET", url, headers, "", access_token, callback );
+}
+
+
+/***/ }),
+
+/***/ 3792:
+/***/ ((__unused_webpack_module, exports) => {
+
+/*
+ * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
+ * in FIPS 180-1
+ * Version 2.2 Copyright Paul Johnston 2000 - 2009.
+ * Other contributors: Greg Holt, Andrew Kepert, Ydnar, Lostinet
+ * Distributed under the BSD License
+ * See http://pajhome.org.uk/crypt/md5 for details.
+ */
+
+/*
+ * Configurable variables. You may need to tweak these to be compatible with
+ * the server-side, but the defaults work in most cases.
+ */
+var hexcase = 1;  /* hex output format. 0 - lowercase; 1 - uppercase        */
+var b64pad  = "="; /* base-64 pad character. "=" for strict RFC compliance   */
+
+/*
+ * These are the functions you'll usually want to call
+ * They take string arguments and return either hex or base-64 encoded strings
+ */
+function hex_sha1(s)    { return rstr2hex(rstr_sha1(str2rstr_utf8(s))); }
+function b64_sha1(s)    { return rstr2b64(rstr_sha1(str2rstr_utf8(s))); }
+function any_sha1(s, e) { return rstr2any(rstr_sha1(str2rstr_utf8(s)), e); }
+function hex_hmac_sha1(k, d)
+  { return rstr2hex(rstr_hmac_sha1(str2rstr_utf8(k), str2rstr_utf8(d))); }
+function b64_hmac_sha1(k, d)
+  { return rstr2b64(rstr_hmac_sha1(str2rstr_utf8(k), str2rstr_utf8(d))); }
+function any_hmac_sha1(k, d, e)
+  { return rstr2any(rstr_hmac_sha1(str2rstr_utf8(k), str2rstr_utf8(d)), e); }
+
+/*
+ * Perform a simple self-test to see if the VM is working
+ */
+function sha1_vm_test()
+{
+  return hex_sha1("abc").toLowerCase() == "a9993e364706816aba3e25717850c26c9cd0d89d";
+}
+
+/*
+ * Calculate the SHA1 of a raw string
+ */
+function rstr_sha1(s)
+{
+  return binb2rstr(binb_sha1(rstr2binb(s), s.length * 8));
+}
+
+/*
+ * Calculate the HMAC-SHA1 of a key and some data (raw strings)
+ */
+function rstr_hmac_sha1(key, data)
+{
+  var bkey = rstr2binb(key);
+  if(bkey.length > 16) bkey = binb_sha1(bkey, key.length * 8);
+
+  var ipad = Array(16), opad = Array(16);
+  for(var i = 0; i < 16; i++)
+  {
+    ipad[i] = bkey[i] ^ 0x36363636;
+    opad[i] = bkey[i] ^ 0x5C5C5C5C;
+  }
+
+  var hash = binb_sha1(ipad.concat(rstr2binb(data)), 512 + data.length * 8);
+  return binb2rstr(binb_sha1(opad.concat(hash), 512 + 160));
+}
+
+/*
+ * Convert a raw string to a hex string
+ */
+function rstr2hex(input)
+{
+  try { hexcase } catch(e) { hexcase=0; }
+  var hex_tab = hexcase ? "0123456789ABCDEF" : "0123456789abcdef";
+  var output = "";
+  var x;
+  for(var i = 0; i < input.length; i++)
+  {
+    x = input.charCodeAt(i);
+    output += hex_tab.charAt((x >>> 4) & 0x0F)
+           +  hex_tab.charAt( x        & 0x0F);
+  }
+  return output;
+}
+
+/*
+ * Convert a raw string to a base-64 string
+ */
+function rstr2b64(input)
+{
+  try { b64pad } catch(e) { b64pad=''; }
+  var tab = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  var output = "";
+  var len = input.length;
+  for(var i = 0; i < len; i += 3)
+  {
+    var triplet = (input.charCodeAt(i) << 16)
+                | (i + 1 < len ? input.charCodeAt(i+1) << 8 : 0)
+                | (i + 2 < len ? input.charCodeAt(i+2)      : 0);
+    for(var j = 0; j < 4; j++)
+    {
+      if(i * 8 + j * 6 > input.length * 8) output += b64pad;
+      else output += tab.charAt((triplet >>> 6*(3-j)) & 0x3F);
+    }
+  }
+  return output;
+}
+
+/*
+ * Convert a raw string to an arbitrary string encoding
+ */
+function rstr2any(input, encoding)
+{
+  var divisor = encoding.length;
+  var remainders = Array();
+  var i, q, x, quotient;
+
+  /* Convert to an array of 16-bit big-endian values, forming the dividend */
+  var dividend = Array(Math.ceil(input.length / 2));
+  for(i = 0; i < dividend.length; i++)
+  {
+    dividend[i] = (input.charCodeAt(i * 2) << 8) | input.charCodeAt(i * 2 + 1);
+  }
+
+  /*
+   * Repeatedly perform a long division. The binary array forms the dividend,
+   * the length of the encoding is the divisor. Once computed, the quotient
+   * forms the dividend for the next step. We stop when the dividend is zero.
+   * All remainders are stored for later use.
+   */
+  while(dividend.length > 0)
+  {
+    quotient = Array();
+    x = 0;
+    for(i = 0; i < dividend.length; i++)
+    {
+      x = (x << 16) + dividend[i];
+      q = Math.floor(x / divisor);
+      x -= q * divisor;
+      if(quotient.length > 0 || q > 0)
+        quotient[quotient.length] = q;
+    }
+    remainders[remainders.length] = x;
+    dividend = quotient;
+  }
+
+  /* Convert the remainders to the output string */
+  var output = "";
+  for(i = remainders.length - 1; i >= 0; i--)
+    output += encoding.charAt(remainders[i]);
+
+  /* Append leading zero equivalents */
+  var full_length = Math.ceil(input.length * 8 /
+                                    (Math.log(encoding.length) / Math.log(2)))
+  for(i = output.length; i < full_length; i++)
+    output = encoding[0] + output;
+
+  return output;
+}
+
+/*
+ * Encode a string as utf-8.
+ * For efficiency, this assumes the input is valid utf-16.
+ */
+function str2rstr_utf8(input)
+{
+  var output = "";
+  var i = -1;
+  var x, y;
+
+  while(++i < input.length)
+  {
+    /* Decode utf-16 surrogate pairs */
+    x = input.charCodeAt(i);
+    y = i + 1 < input.length ? input.charCodeAt(i + 1) : 0;
+    if(0xD800 <= x && x <= 0xDBFF && 0xDC00 <= y && y <= 0xDFFF)
+    {
+      x = 0x10000 + ((x & 0x03FF) << 10) + (y & 0x03FF);
+      i++;
+    }
+
+    /* Encode output as utf-8 */
+    if(x <= 0x7F)
+      output += String.fromCharCode(x);
+    else if(x <= 0x7FF)
+      output += String.fromCharCode(0xC0 | ((x >>> 6 ) & 0x1F),
+                                    0x80 | ( x         & 0x3F));
+    else if(x <= 0xFFFF)
+      output += String.fromCharCode(0xE0 | ((x >>> 12) & 0x0F),
+                                    0x80 | ((x >>> 6 ) & 0x3F),
+                                    0x80 | ( x         & 0x3F));
+    else if(x <= 0x1FFFFF)
+      output += String.fromCharCode(0xF0 | ((x >>> 18) & 0x07),
+                                    0x80 | ((x >>> 12) & 0x3F),
+                                    0x80 | ((x >>> 6 ) & 0x3F),
+                                    0x80 | ( x         & 0x3F));
+  }
+  return output;
+}
+
+/*
+ * Encode a string as utf-16
+ */
+function str2rstr_utf16le(input)
+{
+  var output = "";
+  for(var i = 0; i < input.length; i++)
+    output += String.fromCharCode( input.charCodeAt(i)        & 0xFF,
+                                  (input.charCodeAt(i) >>> 8) & 0xFF);
+  return output;
+}
+
+function str2rstr_utf16be(input)
+{
+  var output = "";
+  for(var i = 0; i < input.length; i++)
+    output += String.fromCharCode((input.charCodeAt(i) >>> 8) & 0xFF,
+                                   input.charCodeAt(i)        & 0xFF);
+  return output;
+}
+
+/*
+ * Convert a raw string to an array of big-endian words
+ * Characters >255 have their high-byte silently ignored.
+ */
+function rstr2binb(input)
+{
+  var output = Array(input.length >> 2);
+  for(var i = 0; i < output.length; i++)
+    output[i] = 0;
+  for(var i = 0; i < input.length * 8; i += 8)
+    output[i>>5] |= (input.charCodeAt(i / 8) & 0xFF) << (24 - i % 32);
+  return output;
+}
+
+/*
+ * Convert an array of big-endian words to a string
+ */
+function binb2rstr(input)
+{
+  var output = "";
+  for(var i = 0; i < input.length * 32; i += 8)
+    output += String.fromCharCode((input[i>>5] >>> (24 - i % 32)) & 0xFF);
+  return output;
+}
+
+/*
+ * Calculate the SHA-1 of an array of big-endian words, and a bit length
+ */
+function binb_sha1(x, len)
+{
+  /* append padding */
+  x[len >> 5] |= 0x80 << (24 - len % 32);
+  x[((len + 64 >> 9) << 4) + 15] = len;
+
+  var w = Array(80);
+  var a =  1732584193;
+  var b = -271733879;
+  var c = -1732584194;
+  var d =  271733878;
+  var e = -1009589776;
+
+  for(var i = 0; i < x.length; i += 16)
+  {
+    var olda = a;
+    var oldb = b;
+    var oldc = c;
+    var oldd = d;
+    var olde = e;
+
+    for(var j = 0; j < 80; j++)
+    {
+      if(j < 16) w[j] = x[i + j];
+      else w[j] = bit_rol(w[j-3] ^ w[j-8] ^ w[j-14] ^ w[j-16], 1);
+      var t = safe_add(safe_add(bit_rol(a, 5), sha1_ft(j, b, c, d)),
+                       safe_add(safe_add(e, w[j]), sha1_kt(j)));
+      e = d;
+      d = c;
+      c = bit_rol(b, 30);
+      b = a;
+      a = t;
+    }
+
+    a = safe_add(a, olda);
+    b = safe_add(b, oldb);
+    c = safe_add(c, oldc);
+    d = safe_add(d, oldd);
+    e = safe_add(e, olde);
+  }
+  return Array(a, b, c, d, e);
+
+}
+
+/*
+ * Perform the appropriate triplet combination function for the current
+ * iteration
+ */
+function sha1_ft(t, b, c, d)
+{
+  if(t < 20) return (b & c) | ((~b) & d);
+  if(t < 40) return b ^ c ^ d;
+  if(t < 60) return (b & c) | (b & d) | (c & d);
+  return b ^ c ^ d;
+}
+
+/*
+ * Determine the appropriate additive constant for the current iteration
+ */
+function sha1_kt(t)
+{
+  return (t < 20) ?  1518500249 : (t < 40) ?  1859775393 :
+         (t < 60) ? -1894007588 : -899497514;
+}
+
+/*
+ * Add integers, wrapping at 2^32. This uses 16-bit operations internally
+ * to work around bugs in some JS interpreters.
+ */
+function safe_add(x, y)
+{
+  var lsw = (x & 0xFFFF) + (y & 0xFFFF);
+  var msw = (x >> 16) + (y >> 16) + (lsw >> 16);
+  return (msw << 16) | (lsw & 0xFFFF);
+}
+
+/*
+ * Bitwise rotate a 32-bit number to the left.
+ */
+function bit_rol(num, cnt)
+{
+  return (num << cnt) | (num >>> (32 - cnt));
+}
+
+exports.HMACSHA1= function(key, data) {
+  return b64_hmac_sha1(key, data);
+}
+
+/***/ }),
+
 /***/ 4294:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -24705,7 +42883,7 @@ exports["default"] = _default;
 
 /***/ }),
 
-/***/ 399:
+/***/ 7672:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -24734,57 +42912,334 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.run = void 0;
-const core = __importStar(__nccwpck_require__(2186));
-const wait_1 = __nccwpck_require__(5259);
-/**
- * The main function for the action.
- * @returns {Promise<void>} Resolves when the action is complete.
- */
-async function run() {
-    try {
-        const ms = core.getInput('milliseconds');
-        // Debug logs are only output if the `ACTIONS_STEP_DEBUG` secret is true
-        core.debug(`Waiting ${ms} milliseconds ...`);
-        // Log the current timestamp, wait, then log the new timestamp
-        core.debug(new Date().toTimeString());
-        await (0, wait_1.wait)(parseInt(ms, 10));
-        core.debug(new Date().toTimeString());
-        // Set outputs for other workflow steps to use
-        core.setOutput('time', new Date().toTimeString());
+exports.PostTumblrAction = void 0;
+const A = __importStar(__nccwpck_require__(3834));
+const Validate = __importStar(__nccwpck_require__(4953));
+const Effect = __importStar(__nccwpck_require__(8568));
+const function_1 = __nccwpck_require__(6985);
+class PostTumblrAction {
+    runtime;
+    logger;
+    tumblr;
+    constructor(logger, runtime, tumblr) {
+        this.logger = logger;
+        this.runtime = runtime;
+        this.tumblr = tumblr;
     }
-    catch (error) {
-        // Fail the workflow run if an error occurs
-        if (error instanceof Error)
-            core.setFailed(error.message);
+    requiredInput(M, key) {
+        return M.chain(this.runtime.inputs(key), Validate.requiredF(M, key));
     }
+    program = (M) => (0, function_1.pipe)(A.sequence(M)([
+        this.requiredInput(M, 'consumer-key'),
+        this.requiredInput(M, 'consumer-secret'),
+        this.requiredInput(M, 'access-token'),
+        this.requiredInput(M, 'access-token-secret'),
+        this.requiredInput(M, 'blog-identifier'),
+        this.requiredInput(M, 'text')
+    ]), maybeInputs => M.chain(M.chain(M.map(maybeInputs, inputs => {
+        const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier, text] = inputs;
+        const config = {
+            consumerKey,
+            consumerSecret,
+            accessToken,
+            accessTokenSecret,
+            blogIdentifier
+        };
+        return [config, text];
+    }), Effect.M.tap(M, ([, text]) => this.logger.info('🥃 sending tumblr post', { text }))), ([config, text]) => this.tumblr.post(config, text)));
 }
-exports.run = run;
+exports.PostTumblrAction = PostTumblrAction;
 
 
 /***/ }),
 
-/***/ 5259:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ 8568:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.wait = void 0;
-/**
- * Wait for a number of milliseconds.
- * @param milliseconds The number of milliseconds to wait.
- * @returns {Promise<string>} Resolves with 'done!' after the wait is over.
- */
-async function wait(milliseconds) {
-    return new Promise(resolve => {
-        if (isNaN(milliseconds)) {
-            throw new Error('milliseconds not a number');
-        }
-        setTimeout(() => resolve('done!'), milliseconds);
-    });
+exports.runSync = exports.M = exports.Effect = exports.tryCatch = void 0;
+const E = __importStar(__nccwpck_require__(7534));
+const TE = __importStar(__nccwpck_require__(437));
+function tryCatch(task) {
+    return TE.tryCatch(async () => task(), e => (e instanceof Error ? e : new Error(`unknown error ${e}`)));
 }
-exports.wait = wait;
+exports.tryCatch = tryCatch;
+exports.Effect = TE.MonadThrow;
+const tap = (MT, f) => {
+    return tapped => {
+        return MT.chain(f(tapped), () => MT.of(tapped));
+    };
+};
+exports.M = {
+    tap
+};
+async function runSync(program) {
+    E.getOrElse(error => {
+        throw error;
+    })(await program(exports.Effect)());
+}
+exports.runSync = runSync;
+
+
+/***/ }),
+
+/***/ 6144:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const action_1 = __nccwpck_require__(7672);
+const logger_1 = __nccwpck_require__(4636);
+const runtime_1 = __nccwpck_require__(7073);
+const tumblr_1 = __nccwpck_require__(8537);
+const Effect = __importStar(__nccwpck_require__(8568));
+const action = new action_1.PostTumblrAction(logger_1.GitHubActionsLogger, runtime_1.GitHubActionsRuntime, new tumblr_1.TumblrJs());
+Effect.runSync(action.program);
+
+
+/***/ }),
+
+/***/ 4636:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GitHubActionsLogger = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const Effect = __importStar(__nccwpck_require__(8568));
+exports.GitHubActionsLogger = {
+    info: (message, data) => {
+        const segments = Object.entries(data).map(([key, value]) => `${key}=[${value}]`);
+        return Effect.tryCatch(async () => core.info([message, ...segments].join(' ')));
+    }
+};
+
+
+/***/ }),
+
+/***/ 7073:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.GitHubActionsRuntime = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const Effect = __importStar(__nccwpck_require__(8568));
+exports.GitHubActionsRuntime = {
+    inputs: (key) => Effect.tryCatch(async () => core.getInput(key))
+};
+
+
+/***/ }),
+
+/***/ 8537:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TumblrJs = void 0;
+const Effect = __importStar(__nccwpck_require__(8568));
+// eslint-disable-next-line @typescript-eslint/no-var-requires,  @typescript-eslint/no-require-imports, import/no-commonjs
+const tumblr = __nccwpck_require__(883);
+class TumblrJs {
+    post(config, text) {
+        const client = tumblr.createClient({
+            consumer_key: config.consumerKey,
+            consumer_secret: config.consumerSecret,
+            token: config.accessToken,
+            token_secret: config.accessTokenSecret
+        });
+        return Effect.tryCatch(async () => await client.createPost(config.blogIdentifier, {
+            content: [
+                {
+                    type: 'text',
+                    text
+                }
+            ]
+        }));
+    }
+}
+exports.TumblrJs = TumblrJs;
+
+
+/***/ }),
+
+/***/ 4953:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || function (mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.requiredF = exports.required = exports.InvalidField = void 0;
+const E = __importStar(__nccwpck_require__(7534));
+class InvalidField extends Error {
+    field;
+    code;
+    constructor(field, code) {
+        super(`Field ${field} invalid (${code})`);
+        this.field = field;
+        this.code = code;
+    }
+}
+exports.InvalidField = InvalidField;
+function required(field, input) {
+    if (input)
+        return E.right(input);
+    else
+        return E.left(new InvalidField(field, 'missing'));
+}
+exports.required = required;
+function lift(M) {
+    return E.match((err) => M.throwError(err), (head) => M.of(head));
+}
+function requiredF(M, field) {
+    return (input) => lift(M)(required(field, input));
+}
+exports.requiredF = requiredF;
 
 
 /***/ }),
@@ -24893,11 +43348,43 @@ module.exports = require("node:events");
 
 /***/ }),
 
+/***/ 7561:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:fs");
+
+/***/ }),
+
+/***/ 8849:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:http");
+
+/***/ }),
+
+/***/ 5200:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:https");
+
+/***/ }),
+
 /***/ 4492:
 /***/ ((module) => {
 
 "use strict";
 module.exports = require("node:stream");
+
+/***/ }),
+
+/***/ 1041:
+/***/ ((module) => {
+
+"use strict";
+module.exports = require("node:url");
 
 /***/ }),
 
@@ -26636,6 +45123,877 @@ function parseParams (str) {
 module.exports = parseParams
 
 
+/***/ }),
+
+/***/ 883:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+/*!
+ * https://www.npmjs.com/package/tumblr.js
+ *
+ * <3 always,
+ *     Tumblr
+ */
+
+const FormData = __nccwpck_require__(4334);
+const http = __nccwpck_require__(8849);
+const https = __nccwpck_require__(5200);
+const { URL } = __nccwpck_require__(1041);
+const oauth = __nccwpck_require__(2908);
+const { ReadStream } = __nccwpck_require__(7561);
+
+const API_BASE_URL = 'https://api.tumblr.com'; // deliberately no trailing slash
+
+class Client {
+  /**
+   * Package version
+   * @readonly
+   */
+  static version = '5.0.0';
+
+  /**
+   * @typedef {import('./types').TumblrClientCallback} TumblrClientCallback
+   * @typedef {import('./types').PostFormatFilter} PostFormatFilter
+   * @typedef {Map<string, ReadonlyArray<string>|string>} RequestData
+   * @typedef {{readonly auth:'none'}} NoneAuthCredentials
+   * @typedef {{readonly auth:'apiKey'; readonly apiKey:string}} ApiKeyCredentials
+   * @typedef {{readonly auth:'oauth1'; readonly consumer_key: string; readonly consumer_secret: string; readonly token: string; readonly token_secret: string }} OAuth1Credentials
+   * @typedef {NoneAuthCredentials|ApiKeyCredentials|OAuth1Credentials} Credentials
+   */
+
+  /** @type {Credentials} */
+  #credentials = { auth: 'none' };
+
+  /** @type {oauth.OAuth | null} */
+  #oauthClient = null;
+
+  /**
+   * Creates a Tumblr API client using the given options
+   *
+   * @param  {import('./types').Options} [options] - client options
+   */
+  constructor(options) {
+    /**
+     * Package version
+     *
+     * @type {typeof Client.version}
+     * @readonly
+     */
+    this.version = Client.version;
+
+    try {
+      const url = new URL(options?.baseUrl ?? API_BASE_URL);
+
+      if (url.pathname !== '/') {
+        throw 'pathname';
+      }
+
+      // url.searchParams.size is buggy in node 16, we have to look at keys
+      if ([...url.searchParams.keys()].length) {
+        throw 'search';
+      }
+
+      if (url.username) {
+        throw 'username';
+      }
+
+      if (url.password) {
+        throw 'password';
+      }
+
+      if (url.hash) {
+        throw 'hash';
+      }
+
+      /**
+       * Base URL to API requests
+       * @type {string}
+       * @readonly
+       */
+      this.baseUrl = url.toString();
+    } catch (err) {
+      switch (err) {
+        case 'pathname':
+          throw new TypeError('baseUrl option must not include a pathname.');
+
+        case 'search':
+          throw new TypeError('baseUrl option must not include search params (query).');
+
+        case 'username':
+          throw new TypeError('baseUrl option must not include username.');
+
+        case 'password':
+          throw new TypeError('baseUrl option must not include password.');
+
+        case 'hash':
+          throw new TypeError('baseUrl option must not include hash.');
+
+        default:
+          throw new TypeError('Invalid baseUrl option provided.');
+      }
+    }
+
+    if (options) {
+      // If we have any of the optional credentials, we should have all of them.
+      if (
+        /** @type {const} */ (['consumer_secret', 'token_secret', 'token']).some((propertyName) =>
+          Object.prototype.hasOwnProperty.call(options, propertyName),
+        )
+      ) {
+        if (!options.consumer_key || typeof options.consumer_key !== 'string') {
+          throw new TypeError(
+            `Provide consumer_key or all oauth credentials. Invalid consumer_key provided.`,
+          );
+        }
+        if (!options.consumer_secret || typeof options.consumer_secret !== 'string') {
+          throw new TypeError(
+            `Provide consumer_key or all oauth credentials. Invalid consumer_secret provided.`,
+          );
+        }
+        if (!options.token || typeof options.token !== 'string') {
+          throw new TypeError(
+            `Provide consumer_key or all oauth credentials. Invalid token provided.`,
+          );
+        }
+        if (!options.token_secret || typeof options.token_secret !== 'string') {
+          throw new TypeError(
+            `Provide consumer_key or all oauth credentials. Invalid token_secret provided.`,
+          );
+        }
+
+        this.#credentials = {
+          auth: 'oauth1',
+          consumer_key: options.consumer_key,
+          consumer_secret: options.consumer_secret,
+          token: options.token,
+          token_secret: options.token_secret,
+        };
+      }
+
+      // consumer_key can be provided alone to use for api_key authentication
+      else if (options.consumer_key) {
+        if (typeof options.consumer_key !== 'string') {
+          throw new TypeError('You must provide a consumer_key.');
+        }
+        this.#credentials = { auth: 'apiKey', apiKey: options.consumer_key };
+      }
+    }
+
+    /** @type {oauth.OAuth | null} */
+    this.#oauthClient =
+      this.#credentials.auth === 'oauth1'
+        ? new oauth.OAuth(
+            '',
+            '',
+            this.#credentials.consumer_key,
+            this.#credentials.consumer_secret,
+            '1.0',
+            null,
+            'HMAC-SHA1',
+          )
+        : null;
+
+    // Deprecated, let it show its warning.
+    if (options?.returnPromises) {
+      this.returnPromises();
+    }
+  }
+
+  /**
+   * Performs a GET request
+   *
+   * @param  {string} apiPath - URL path for the request
+   * @param  {Record<string,any>|TumblrClientCallback} [paramsOrCallback] - query parameters
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  getRequest(apiPath, paramsOrCallback, callback) {
+    let params = paramsOrCallback;
+    if (typeof params === 'function') {
+      callback = /** @type {TumblrClientCallback} */ (params);
+      params = undefined;
+    }
+
+    const [url, requestData] = this.#prepareRequestUrlAndRequestData(apiPath, 'GET', params);
+
+    return this.#makeRequest(url, 'GET', requestData, callback);
+  }
+
+  /**
+   * @template {TumblrClientCallback|undefined} CB
+   *
+   * @param {URL} url
+   * @param {'GET'|'POST'|'PUT'} method request method
+   * @param {null|RequestData} data
+   * @param {CB} providedCallback
+   *
+   * @returns {CB extends undefined ? Promise<any> : undefined}
+   */
+  #makeRequest(url, method, data, providedCallback) {
+    /** @type {TumblrClientCallback} */
+    let callback;
+
+    /** @type {Promise<any>|undefined} */
+    let promise;
+    if (!providedCallback) {
+      /** @type {(value: any) => void} */
+      let resolve;
+      /** @type {(reason?: any) => void} */
+      let reject;
+
+      promise = new Promise((promiseResolve, promiseReject) => {
+        resolve = promiseResolve;
+        reject = promiseReject;
+      });
+
+      callback = (err, resp) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(resp);
+      };
+    } else {
+      callback = providedCallback;
+    }
+
+    const httpModel = url.protocol === 'http' ? http : https;
+
+    if (this.#credentials.auth === 'apiKey') {
+      url.searchParams.set('api_key', this.#credentials.apiKey);
+    }
+
+    const request = httpModel.request(url, { method });
+    request.setHeader('User-Agent', 'tumblr.js/' + Client.version);
+    request.setHeader('Accept', 'application/json');
+
+    if (this.#oauthClient && this.#credentials.auth === 'oauth1') {
+      const authHeader = this.#oauthClient.authHeader(
+        url.toString(),
+        this.#credentials.token,
+        this.#credentials.token_secret,
+        method,
+      );
+      request.setHeader('Authorization', authHeader);
+    }
+
+    /** @type {undefined|FormData} */
+    let form;
+
+    if (data) {
+      // We use multipart/form-data if we have media to upload
+      // We may also send JSON data in a multipart/form-data JSON field
+      if (data.has('data') || data.has('data64') || data.has('json')) {
+        form = new FormData();
+
+        for (const [key, value] of data.entries()) {
+          // NPF endpoints use a special "json" field
+          if (key === 'json' && typeof value === 'string') {
+            form.append(key, value, { contentType: 'application/json' });
+            continue;
+          }
+
+          // Transform array values to our expected form-data format:
+          // key: [ 'a', 'b' ]
+          // key[0]=a
+          // key[1]=b
+          if (Array.isArray(value)) {
+            for (const [index, arrValue] of (Array.isArray(value) ? value : [value]).entries()) {
+              form.append(`${key}[${index}]`, arrValue);
+            }
+            continue;
+          }
+
+          // Some types of of values error when form-data appends them
+          // or when they're piped into the request buffer.
+          if (typeof value === 'boolean') {
+            form.append(key, JSON.stringify(value));
+            continue;
+          }
+
+          form.append(key, value);
+        }
+
+        for (const [key, value] of Object.entries(form.getHeaders())) {
+          request.setHeader(key, value);
+        }
+
+        form.pipe(request);
+      } else {
+        // Otherwise, we'll JSON encode the body
+        const requestBody = JSON.stringify(Object.fromEntries(data.entries()));
+        request.setHeader('Content-Type', 'application/json');
+        request.setHeader('Content-Length', Buffer.byteLength(requestBody, 'utf8'));
+        request.write(requestBody, 'utf8');
+      }
+    }
+
+    let responseData = '';
+    let callbackCalled = false;
+
+    request.on('response', function (response) {
+      if (!callback) {
+        response.resume();
+        return;
+      }
+
+      response.setEncoding('utf8');
+      response.on('data', function (chunk) {
+        responseData += chunk;
+      });
+      response.on('end', function () {
+        if (callbackCalled) {
+          return;
+        }
+        callbackCalled = true;
+
+        /** @type {{} | undefined} */
+        let parsedData;
+        try {
+          parsedData = JSON.parse(responseData);
+        } catch (err) {
+          callback(
+            new Error(`API error (malformed API response): ${responseData}`),
+            null,
+            response,
+          );
+          return;
+        }
+
+        const statusCode = /** @type {number} */ (response.statusCode);
+        if (statusCode < 200 || statusCode > 399) {
+          // @ts-expect-error unknown shape of parsedData
+          const errString = parsedData?.meta?.msg ?? parsedData?.error ?? 'unknown';
+          return callback(
+            new Error(`API error: ${response.statusCode} ${errString}`),
+            null,
+            response,
+          );
+        }
+
+        // @ts-expect-error Unknown shape of parsedData
+        if (parsedData && parsedData.response) {
+          // @ts-expect-error Unknown shape of parsedData
+          return callback(null, parsedData.response, response);
+        } else {
+          return callback(
+            new Error('API error (malformed API response): ' + parsedData),
+            null,
+            response,
+          );
+        }
+      });
+    });
+
+    request.on('error', function (err) {
+      if (callbackCalled) {
+        return;
+      }
+      callbackCalled = true;
+      callback?.(err, null);
+    });
+
+    if (form) {
+      form.on('end', () => {
+        request.end();
+      });
+    } else {
+      request.end();
+    }
+    return /** @type {CB extends undefined ? Promise<any> : undefined} */ (promise);
+  }
+
+  /**
+   * Prepare request URL and data
+   *
+   * GET requests move all data into URL search.
+   * Other requests move data to the request body.
+   *
+   * @param  {string} apiPath - URL path for the request
+   * @param {'GET'|'POST'|'PUT'} method request method
+   * @param  {Record<string,any>} [params]
+   *
+   * @returns {[URL, null | Map<string,any>]}
+   */
+  #prepareRequestUrlAndRequestData(apiPath, method, params) {
+    const url = new URL(apiPath, this.baseUrl);
+
+    if (method === 'GET') {
+      if (params) {
+        for (const [key, value] of Object.entries(params)) {
+          if (Array.isArray(value)) {
+            // Transform array values to our expected search string format:
+            // tag: [ 'first', 'second' ]
+            // tag%5B0%5D=first&tag%5B1%5D=second
+            for (const [index, arrayValue] of value.entries()) {
+              url.searchParams.append(`${key}[${index}]`, arrayValue);
+            }
+          } else {
+            url.searchParams.set(key, value);
+          }
+        }
+      }
+      return [url, null];
+    }
+
+    const requestData = new Map(params ? Object.entries(params) : undefined);
+
+    for (const [key, value] of url.searchParams.entries()) {
+      if (!requestData.has(key)) {
+        requestData.set(key, value);
+      }
+    }
+
+    // Clear the search params
+    url.search = '';
+    return [url, requestData.size ? requestData : null];
+  }
+
+  /**
+   * Performs a POST request
+   *
+   * @param  {string} apiPath - URL path for the request
+   * @param  {Record<string,any>|TumblrClientCallback} [paramsOrCallback]
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback was provided
+   */
+  postRequest(apiPath, paramsOrCallback, callback) {
+    let params = paramsOrCallback;
+    if (typeof params === 'function') {
+      callback = /** @type {TumblrClientCallback} */ (params);
+      params = undefined;
+    }
+
+    const [url, requestData] = this.#prepareRequestUrlAndRequestData(apiPath, 'POST', params);
+
+    return this.#makeRequest(url, 'POST', requestData, callback);
+  }
+
+  /**
+   * Performs a PUT request
+   *
+   * @param  {string} apiPath - URL path for the request
+   * @param  {Record<string,any>|TumblrClientCallback} [paramsOrCallback]
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback was provided
+   */
+  putRequest(apiPath, paramsOrCallback, callback) {
+    let params = paramsOrCallback;
+    if (typeof params === 'function') {
+      callback = /** @type {TumblrClientCallback} */ (params);
+      params = undefined;
+    }
+
+    const [url, requestData] = this.#prepareRequestUrlAndRequestData(apiPath, 'PUT', params);
+
+    return this.#makeRequest(url, 'PUT', requestData, callback);
+  }
+
+  /**
+   * @deprecated Promises are returned if no callback is provided
+   */
+  returnPromises() {
+    // eslint-disable-next-line no-console
+    console.warn('returnPromises is deprecated. Promises are returned if no callback is provided.');
+  }
+
+  /**
+   * Create or reblog an NPF post
+   *
+   * @see {@link https://www.tumblr.com/docs/en/api/v2#posts---createreblog-a-post-neue-post-format|API Docs}
+   *
+   * @example
+   * await client.createPost(blogName, {
+   *   content: [
+   *     {
+   *       type: 'image',
+   *       // Node's fs module, e.g. `import fs from 'node:fs';`
+   *       media: fs.createReadStream(new URL('./image.jpg', import.meta.url)),
+   *       alt_text: '…',
+   *     },
+   *   ],
+   * });
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {import('./types').NpfReblogParams | import('./types').NpfPostParams } params
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  createPost(blogIdentifier, params, callback) {
+    const data = this.#transformNpfParams(params);
+    return this.postRequest(`/v2/blog/${blogIdentifier}/posts`, data, callback);
+  }
+
+  /**
+   * Edit an NPF post
+   *
+   * @see {@link https://www.tumblr.com/docs/en/api/v2#postspost-id---editing-a-post-neue-post-format|API Docs}
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {string} postId - Post ID
+   * @param  {import('./types').NpfReblogParams | import('./types').NpfPostParams } params
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  editPost(blogIdentifier, postId, params, callback) {
+    const data = this.#transformNpfParams(params);
+    return this.putRequest(`/v2/blog/${blogIdentifier}/posts/${postId}`, data, callback);
+  }
+
+  /**
+   * @param  {import('./types').NpfReblogParams | import('./types').NpfPostParams } params
+   */
+  #transformNpfParams({ tags, content, ...params }) {
+    /** @type {Map<string, ReadStream>} */
+    const mediaStreams = new Map();
+
+    const transformedContent = content.map((block, index) => {
+      if (block.media && block.media instanceof ReadStream) {
+        mediaStreams.set(String(index), block.media);
+        return {
+          ...block,
+          media: { identifier: String(index) },
+        };
+      }
+      return block;
+    });
+
+    const transformedTags = Array.isArray(tags) && { tags: tags.join(',') };
+
+    const transformedParams = {
+      ...params,
+      ...transformedTags,
+      content: transformedContent,
+    };
+
+    const transformed = mediaStreams.size
+      ? {
+          json: JSON.stringify(transformedParams),
+          ...Object.fromEntries(mediaStreams.entries()),
+        }
+      : transformedParams;
+
+    return transformed;
+  }
+
+  /**
+   * Creates a post on the given blog.
+   *
+   * @deprecated Legacy post creation methods are deprecated. Use NPF methods.
+   *
+   * @see {@link https://www.tumblr.com/docs/api/v2#posting|API Docs}
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {Record<string,any>} params
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  createLegacyPost(blogIdentifier, params, callback) {
+    return this.postRequest(`/v2/blog/${blogIdentifier}/post`, params, callback);
+  }
+
+  /**
+   * Edits a given post
+   *
+   * @deprecated Legacy post creation methods are deprecated. Use NPF methods.
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {Record<string,any>} params
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  editLegacyPost(blogIdentifier, params, callback) {
+    return this.postRequest(`/v2/blog/${blogIdentifier}/post/edit`, params, callback);
+  }
+
+  /**
+   * Likes a post as the authenticating user
+   *
+   * @param  {string} postId - ID of post to like
+   * @param  {string} reblogKey - Reblog key of post to like
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  likePost(postId, reblogKey, callback) {
+    return this.postRequest('/v2/user/like', { id: postId, reblog_key: reblogKey }, callback);
+  }
+
+  /**
+   * Unlikes a post as the authenticating user
+   *
+   * @param  {string} postId - ID of post to like
+   * @param  {string} reblogKey - Reblog key of post to like
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  unlikePost(postId, reblogKey, callback) {
+    return this.postRequest('/v2/user/unlike', { id: postId, reblog_key: reblogKey }, callback);
+  }
+
+  /**
+   * Follows a blog as the authenticating user
+   *
+   * @param  {{url: string}|{email:string}} params - parameters sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  followBlog(params, callback) {
+    return this.postRequest('/v2/user/follow', params, callback);
+  }
+
+  /**
+   * Unfollows a blog as the authenticating user
+   *
+   * @param  {{url: string}} params - parameters sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  unfollowBlog(params, callback) {
+    return this.postRequest('/v2/user/unfollow', params, callback);
+  }
+
+  /**
+   * Deletes a given post
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {string} postId - Post ID to delete
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  deletePost(blogIdentifier, postId, callback) {
+    return this.postRequest(`/v2/blog/${blogIdentifier}/post/delete`, { id: postId }, callback);
+  }
+
+  /**
+   * Reblogs a given post
+   *
+   * @deprecated Legacy post creation methods are deprecated. Use NPF methods.
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {Record<string,any>} params - parameters sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  reblogPost(blogIdentifier, params, callback) {
+    return this.postRequest(`/v2/blog/${blogIdentifier}/post/reblog`, params, callback);
+  }
+
+  /**
+   * Gets information about a given blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {{'fields[blogs]'?: string}|TumblrClientCallback} [paramsOrCallback] - query parameters
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogInfo(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(`/v2/blog/${blogIdentifier}/info`, paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets the likes for a blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {{limit?: number; offset?: number; before?: number; after?: number}|TumblrClientCallback} [paramsOrCallback] - optional data sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogLikes(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(`/v2/blog/${blogIdentifier}/likes`, paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets the followers for a blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {{limit?: number; offset?: number}|TumblrClientCallback} [paramsOrCallback] - optional data sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogFollowers(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(`/v2/blog/${blogIdentifier}/followers`, paramsOrCallback, callback);
+  }
+
+  /** @type {import('./types').BlogPosts<Client>} */
+  // @ts-expect-error The legacy signature makes this hard to type correctly.
+  blogPosts = function blogPosts(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(`/v2/blog/${blogIdentifier}/posts`, paramsOrCallback, callback);
+  };
+
+  /**
+   * Gets the queue for a blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {{limit?: number; offset?: number; filter?: 'text'|'raw'}|TumblrClientCallback} [paramsOrCallback] - optional data sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogQueue(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(`/v2/blog/${blogIdentifier}/posts/queue`, paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets the drafts for a blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {{before_id?: number; filter?: PostFormatFilter}|TumblrClientCallback} [paramsOrCallback] - optional data sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogDrafts(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(`/v2/blog/${blogIdentifier}/posts/draft`, paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets the submissions for a blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {{offset?: number; filter?: PostFormatFilter}|TumblrClientCallback} [paramsOrCallback] - optional data sent with the request
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogSubmissions(blogIdentifier, paramsOrCallback, callback) {
+    return this.getRequest(
+      `/v2/blog/${blogIdentifier}/posts/submission`,
+      paramsOrCallback,
+      callback,
+    );
+  }
+
+  /**
+   * Gets the avatar URL for a blog
+   *
+   * @param  {string} blogIdentifier - blog name or URL
+   * @param  {16|24|30|40|48|64|96|128|512|TumblrClientCallback} [sizeOrCallback] - optional data sent with the request
+   * @param  {TumblrClientCallback} [maybeCallback] - invoked when the request completes
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  blogAvatar(blogIdentifier, sizeOrCallback, maybeCallback) {
+    const size = typeof sizeOrCallback === 'function' ? undefined : sizeOrCallback;
+    const callback = typeof sizeOrCallback === 'function' ? sizeOrCallback : maybeCallback;
+    return this.getRequest(
+      `/v2/blog/${blogIdentifier}/avatar${size ? `/${size}` : ''}`,
+      undefined,
+      callback,
+    );
+  }
+
+  /**
+   * Gets information about the authenticating user and their blogs
+   *
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  userInfo(callback) {
+    return this.getRequest('/v2/user/info', undefined, callback);
+  }
+
+  /**
+   * Gets the dashboard posts for the authenticating user
+   *
+   * @param  {Record<string,any>|TumblrClientCallback} [paramsOrCallback] - query parameters
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  userDashboard(paramsOrCallback, callback) {
+    return this.getRequest('/v2/user/dashboard', paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets the blogs the authenticating user follows
+   *
+   * @param  {{limit?: number; offset?: number;}|TumblrClientCallback} [paramsOrCallback] - query parameters
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  userFollowing(paramsOrCallback, callback) {
+    return this.getRequest('/v2/user/following', paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets the likes for the authenticating user
+   *
+   * @param  {{limit?: number; offset?: number; before?: number; after?: number}|TumblrClientCallback} [paramsOrCallback] - query parameters
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  userLikes(paramsOrCallback, callback) {
+    return this.getRequest('/v2/user/likes', paramsOrCallback, callback);
+  }
+
+  /**
+   * Gets posts tagged with the specified tag
+   *
+   * @param  {string} tag - The tag on the posts you'd like to retrieve
+   * @param  {Record<string,any>|TumblrClientCallback} [paramsOrCallback] - query parameters
+   * @param  {TumblrClientCallback} [callback] **Deprecated** Omit the callback and use the promise form
+   *
+   * @return {Promise<any>|undefined} Promise if no callback is provided
+   */
+  taggedPosts(tag, paramsOrCallback, callback) {
+    const params = { tag };
+
+    if (typeof paramsOrCallback === 'function') {
+      callback = /** @type {TumblrClientCallback} */ (paramsOrCallback);
+    } else if (typeof paramsOrCallback === 'object') {
+      Object.assign(params, paramsOrCallback);
+    }
+
+    return this.getRequest('/v2/tagged', params, callback);
+  }
+}
+
+/**
+ * Creates a Tumblr Client
+ *
+ * @param  {import('./types').Options} [options] - client options
+ *
+ * @return {Client} {@link Client} instance
+ *
+ * @see {@link Client}
+ */
+function createClient(options) {
+  return new Client(options);
+}
+
+module.exports = {
+  Client,
+  createClient,
+};
+
+
+/***/ }),
+
+/***/ 3765:
+/***/ ((module) => {
+
+"use strict";
+module.exports = JSON.parse('{"application/1d-interleaved-parityfec":{"source":"iana"},"application/3gpdash-qoe-report+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/3gpp-ims+xml":{"source":"iana","compressible":true},"application/3gpphal+json":{"source":"iana","compressible":true},"application/3gpphalforms+json":{"source":"iana","compressible":true},"application/a2l":{"source":"iana"},"application/ace+cbor":{"source":"iana"},"application/activemessage":{"source":"iana"},"application/activity+json":{"source":"iana","compressible":true},"application/alto-costmap+json":{"source":"iana","compressible":true},"application/alto-costmapfilter+json":{"source":"iana","compressible":true},"application/alto-directory+json":{"source":"iana","compressible":true},"application/alto-endpointcost+json":{"source":"iana","compressible":true},"application/alto-endpointcostparams+json":{"source":"iana","compressible":true},"application/alto-endpointprop+json":{"source":"iana","compressible":true},"application/alto-endpointpropparams+json":{"source":"iana","compressible":true},"application/alto-error+json":{"source":"iana","compressible":true},"application/alto-networkmap+json":{"source":"iana","compressible":true},"application/alto-networkmapfilter+json":{"source":"iana","compressible":true},"application/alto-updatestreamcontrol+json":{"source":"iana","compressible":true},"application/alto-updatestreamparams+json":{"source":"iana","compressible":true},"application/aml":{"source":"iana"},"application/andrew-inset":{"source":"iana","extensions":["ez"]},"application/applefile":{"source":"iana"},"application/applixware":{"source":"apache","extensions":["aw"]},"application/at+jwt":{"source":"iana"},"application/atf":{"source":"iana"},"application/atfx":{"source":"iana"},"application/atom+xml":{"source":"iana","compressible":true,"extensions":["atom"]},"application/atomcat+xml":{"source":"iana","compressible":true,"extensions":["atomcat"]},"application/atomdeleted+xml":{"source":"iana","compressible":true,"extensions":["atomdeleted"]},"application/atomicmail":{"source":"iana"},"application/atomsvc+xml":{"source":"iana","compressible":true,"extensions":["atomsvc"]},"application/atsc-dwd+xml":{"source":"iana","compressible":true,"extensions":["dwd"]},"application/atsc-dynamic-event-message":{"source":"iana"},"application/atsc-held+xml":{"source":"iana","compressible":true,"extensions":["held"]},"application/atsc-rdt+json":{"source":"iana","compressible":true},"application/atsc-rsat+xml":{"source":"iana","compressible":true,"extensions":["rsat"]},"application/atxml":{"source":"iana"},"application/auth-policy+xml":{"source":"iana","compressible":true},"application/bacnet-xdd+zip":{"source":"iana","compressible":false},"application/batch-smtp":{"source":"iana"},"application/bdoc":{"compressible":false,"extensions":["bdoc"]},"application/beep+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/calendar+json":{"source":"iana","compressible":true},"application/calendar+xml":{"source":"iana","compressible":true,"extensions":["xcs"]},"application/call-completion":{"source":"iana"},"application/cals-1840":{"source":"iana"},"application/captive+json":{"source":"iana","compressible":true},"application/cbor":{"source":"iana"},"application/cbor-seq":{"source":"iana"},"application/cccex":{"source":"iana"},"application/ccmp+xml":{"source":"iana","compressible":true},"application/ccxml+xml":{"source":"iana","compressible":true,"extensions":["ccxml"]},"application/cdfx+xml":{"source":"iana","compressible":true,"extensions":["cdfx"]},"application/cdmi-capability":{"source":"iana","extensions":["cdmia"]},"application/cdmi-container":{"source":"iana","extensions":["cdmic"]},"application/cdmi-domain":{"source":"iana","extensions":["cdmid"]},"application/cdmi-object":{"source":"iana","extensions":["cdmio"]},"application/cdmi-queue":{"source":"iana","extensions":["cdmiq"]},"application/cdni":{"source":"iana"},"application/cea":{"source":"iana"},"application/cea-2018+xml":{"source":"iana","compressible":true},"application/cellml+xml":{"source":"iana","compressible":true},"application/cfw":{"source":"iana"},"application/city+json":{"source":"iana","compressible":true},"application/clr":{"source":"iana"},"application/clue+xml":{"source":"iana","compressible":true},"application/clue_info+xml":{"source":"iana","compressible":true},"application/cms":{"source":"iana"},"application/cnrp+xml":{"source":"iana","compressible":true},"application/coap-group+json":{"source":"iana","compressible":true},"application/coap-payload":{"source":"iana"},"application/commonground":{"source":"iana"},"application/conference-info+xml":{"source":"iana","compressible":true},"application/cose":{"source":"iana"},"application/cose-key":{"source":"iana"},"application/cose-key-set":{"source":"iana"},"application/cpl+xml":{"source":"iana","compressible":true,"extensions":["cpl"]},"application/csrattrs":{"source":"iana"},"application/csta+xml":{"source":"iana","compressible":true},"application/cstadata+xml":{"source":"iana","compressible":true},"application/csvm+json":{"source":"iana","compressible":true},"application/cu-seeme":{"source":"apache","extensions":["cu"]},"application/cwt":{"source":"iana"},"application/cybercash":{"source":"iana"},"application/dart":{"compressible":true},"application/dash+xml":{"source":"iana","compressible":true,"extensions":["mpd"]},"application/dash-patch+xml":{"source":"iana","compressible":true,"extensions":["mpp"]},"application/dashdelta":{"source":"iana"},"application/davmount+xml":{"source":"iana","compressible":true,"extensions":["davmount"]},"application/dca-rft":{"source":"iana"},"application/dcd":{"source":"iana"},"application/dec-dx":{"source":"iana"},"application/dialog-info+xml":{"source":"iana","compressible":true},"application/dicom":{"source":"iana"},"application/dicom+json":{"source":"iana","compressible":true},"application/dicom+xml":{"source":"iana","compressible":true},"application/dii":{"source":"iana"},"application/dit":{"source":"iana"},"application/dns":{"source":"iana"},"application/dns+json":{"source":"iana","compressible":true},"application/dns-message":{"source":"iana"},"application/docbook+xml":{"source":"apache","compressible":true,"extensions":["dbk"]},"application/dots+cbor":{"source":"iana"},"application/dskpp+xml":{"source":"iana","compressible":true},"application/dssc+der":{"source":"iana","extensions":["dssc"]},"application/dssc+xml":{"source":"iana","compressible":true,"extensions":["xdssc"]},"application/dvcs":{"source":"iana"},"application/ecmascript":{"source":"iana","compressible":true,"extensions":["es","ecma"]},"application/edi-consent":{"source":"iana"},"application/edi-x12":{"source":"iana","compressible":false},"application/edifact":{"source":"iana","compressible":false},"application/efi":{"source":"iana"},"application/elm+json":{"source":"iana","charset":"UTF-8","compressible":true},"application/elm+xml":{"source":"iana","compressible":true},"application/emergencycalldata.cap+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/emergencycalldata.comment+xml":{"source":"iana","compressible":true},"application/emergencycalldata.control+xml":{"source":"iana","compressible":true},"application/emergencycalldata.deviceinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.ecall.msd":{"source":"iana"},"application/emergencycalldata.providerinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.serviceinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.subscriberinfo+xml":{"source":"iana","compressible":true},"application/emergencycalldata.veds+xml":{"source":"iana","compressible":true},"application/emma+xml":{"source":"iana","compressible":true,"extensions":["emma"]},"application/emotionml+xml":{"source":"iana","compressible":true,"extensions":["emotionml"]},"application/encaprtp":{"source":"iana"},"application/epp+xml":{"source":"iana","compressible":true},"application/epub+zip":{"source":"iana","compressible":false,"extensions":["epub"]},"application/eshop":{"source":"iana"},"application/exi":{"source":"iana","extensions":["exi"]},"application/expect-ct-report+json":{"source":"iana","compressible":true},"application/express":{"source":"iana","extensions":["exp"]},"application/fastinfoset":{"source":"iana"},"application/fastsoap":{"source":"iana"},"application/fdt+xml":{"source":"iana","compressible":true,"extensions":["fdt"]},"application/fhir+json":{"source":"iana","charset":"UTF-8","compressible":true},"application/fhir+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/fido.trusted-apps+json":{"compressible":true},"application/fits":{"source":"iana"},"application/flexfec":{"source":"iana"},"application/font-sfnt":{"source":"iana"},"application/font-tdpfr":{"source":"iana","extensions":["pfr"]},"application/font-woff":{"source":"iana","compressible":false},"application/framework-attributes+xml":{"source":"iana","compressible":true},"application/geo+json":{"source":"iana","compressible":true,"extensions":["geojson"]},"application/geo+json-seq":{"source":"iana"},"application/geopackage+sqlite3":{"source":"iana"},"application/geoxacml+xml":{"source":"iana","compressible":true},"application/gltf-buffer":{"source":"iana"},"application/gml+xml":{"source":"iana","compressible":true,"extensions":["gml"]},"application/gpx+xml":{"source":"apache","compressible":true,"extensions":["gpx"]},"application/gxf":{"source":"apache","extensions":["gxf"]},"application/gzip":{"source":"iana","compressible":false,"extensions":["gz"]},"application/h224":{"source":"iana"},"application/held+xml":{"source":"iana","compressible":true},"application/hjson":{"extensions":["hjson"]},"application/http":{"source":"iana"},"application/hyperstudio":{"source":"iana","extensions":["stk"]},"application/ibe-key-request+xml":{"source":"iana","compressible":true},"application/ibe-pkg-reply+xml":{"source":"iana","compressible":true},"application/ibe-pp-data":{"source":"iana"},"application/iges":{"source":"iana"},"application/im-iscomposing+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/index":{"source":"iana"},"application/index.cmd":{"source":"iana"},"application/index.obj":{"source":"iana"},"application/index.response":{"source":"iana"},"application/index.vnd":{"source":"iana"},"application/inkml+xml":{"source":"iana","compressible":true,"extensions":["ink","inkml"]},"application/iotp":{"source":"iana"},"application/ipfix":{"source":"iana","extensions":["ipfix"]},"application/ipp":{"source":"iana"},"application/isup":{"source":"iana"},"application/its+xml":{"source":"iana","compressible":true,"extensions":["its"]},"application/java-archive":{"source":"apache","compressible":false,"extensions":["jar","war","ear"]},"application/java-serialized-object":{"source":"apache","compressible":false,"extensions":["ser"]},"application/java-vm":{"source":"apache","compressible":false,"extensions":["class"]},"application/javascript":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["js","mjs"]},"application/jf2feed+json":{"source":"iana","compressible":true},"application/jose":{"source":"iana"},"application/jose+json":{"source":"iana","compressible":true},"application/jrd+json":{"source":"iana","compressible":true},"application/jscalendar+json":{"source":"iana","compressible":true},"application/json":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["json","map"]},"application/json-patch+json":{"source":"iana","compressible":true},"application/json-seq":{"source":"iana"},"application/json5":{"extensions":["json5"]},"application/jsonml+json":{"source":"apache","compressible":true,"extensions":["jsonml"]},"application/jwk+json":{"source":"iana","compressible":true},"application/jwk-set+json":{"source":"iana","compressible":true},"application/jwt":{"source":"iana"},"application/kpml-request+xml":{"source":"iana","compressible":true},"application/kpml-response+xml":{"source":"iana","compressible":true},"application/ld+json":{"source":"iana","compressible":true,"extensions":["jsonld"]},"application/lgr+xml":{"source":"iana","compressible":true,"extensions":["lgr"]},"application/link-format":{"source":"iana"},"application/load-control+xml":{"source":"iana","compressible":true},"application/lost+xml":{"source":"iana","compressible":true,"extensions":["lostxml"]},"application/lostsync+xml":{"source":"iana","compressible":true},"application/lpf+zip":{"source":"iana","compressible":false},"application/lxf":{"source":"iana"},"application/mac-binhex40":{"source":"iana","extensions":["hqx"]},"application/mac-compactpro":{"source":"apache","extensions":["cpt"]},"application/macwriteii":{"source":"iana"},"application/mads+xml":{"source":"iana","compressible":true,"extensions":["mads"]},"application/manifest+json":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["webmanifest"]},"application/marc":{"source":"iana","extensions":["mrc"]},"application/marcxml+xml":{"source":"iana","compressible":true,"extensions":["mrcx"]},"application/mathematica":{"source":"iana","extensions":["ma","nb","mb"]},"application/mathml+xml":{"source":"iana","compressible":true,"extensions":["mathml"]},"application/mathml-content+xml":{"source":"iana","compressible":true},"application/mathml-presentation+xml":{"source":"iana","compressible":true},"application/mbms-associated-procedure-description+xml":{"source":"iana","compressible":true},"application/mbms-deregister+xml":{"source":"iana","compressible":true},"application/mbms-envelope+xml":{"source":"iana","compressible":true},"application/mbms-msk+xml":{"source":"iana","compressible":true},"application/mbms-msk-response+xml":{"source":"iana","compressible":true},"application/mbms-protection-description+xml":{"source":"iana","compressible":true},"application/mbms-reception-report+xml":{"source":"iana","compressible":true},"application/mbms-register+xml":{"source":"iana","compressible":true},"application/mbms-register-response+xml":{"source":"iana","compressible":true},"application/mbms-schedule+xml":{"source":"iana","compressible":true},"application/mbms-user-service-description+xml":{"source":"iana","compressible":true},"application/mbox":{"source":"iana","extensions":["mbox"]},"application/media-policy-dataset+xml":{"source":"iana","compressible":true,"extensions":["mpf"]},"application/media_control+xml":{"source":"iana","compressible":true},"application/mediaservercontrol+xml":{"source":"iana","compressible":true,"extensions":["mscml"]},"application/merge-patch+json":{"source":"iana","compressible":true},"application/metalink+xml":{"source":"apache","compressible":true,"extensions":["metalink"]},"application/metalink4+xml":{"source":"iana","compressible":true,"extensions":["meta4"]},"application/mets+xml":{"source":"iana","compressible":true,"extensions":["mets"]},"application/mf4":{"source":"iana"},"application/mikey":{"source":"iana"},"application/mipc":{"source":"iana"},"application/missing-blocks+cbor-seq":{"source":"iana"},"application/mmt-aei+xml":{"source":"iana","compressible":true,"extensions":["maei"]},"application/mmt-usd+xml":{"source":"iana","compressible":true,"extensions":["musd"]},"application/mods+xml":{"source":"iana","compressible":true,"extensions":["mods"]},"application/moss-keys":{"source":"iana"},"application/moss-signature":{"source":"iana"},"application/mosskey-data":{"source":"iana"},"application/mosskey-request":{"source":"iana"},"application/mp21":{"source":"iana","extensions":["m21","mp21"]},"application/mp4":{"source":"iana","extensions":["mp4s","m4p"]},"application/mpeg4-generic":{"source":"iana"},"application/mpeg4-iod":{"source":"iana"},"application/mpeg4-iod-xmt":{"source":"iana"},"application/mrb-consumer+xml":{"source":"iana","compressible":true},"application/mrb-publish+xml":{"source":"iana","compressible":true},"application/msc-ivr+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/msc-mixer+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/msword":{"source":"iana","compressible":false,"extensions":["doc","dot"]},"application/mud+json":{"source":"iana","compressible":true},"application/multipart-core":{"source":"iana"},"application/mxf":{"source":"iana","extensions":["mxf"]},"application/n-quads":{"source":"iana","extensions":["nq"]},"application/n-triples":{"source":"iana","extensions":["nt"]},"application/nasdata":{"source":"iana"},"application/news-checkgroups":{"source":"iana","charset":"US-ASCII"},"application/news-groupinfo":{"source":"iana","charset":"US-ASCII"},"application/news-transmission":{"source":"iana"},"application/nlsml+xml":{"source":"iana","compressible":true},"application/node":{"source":"iana","extensions":["cjs"]},"application/nss":{"source":"iana"},"application/oauth-authz-req+jwt":{"source":"iana"},"application/oblivious-dns-message":{"source":"iana"},"application/ocsp-request":{"source":"iana"},"application/ocsp-response":{"source":"iana"},"application/octet-stream":{"source":"iana","compressible":false,"extensions":["bin","dms","lrf","mar","so","dist","distz","pkg","bpk","dump","elc","deploy","exe","dll","deb","dmg","iso","img","msi","msp","msm","buffer"]},"application/oda":{"source":"iana","extensions":["oda"]},"application/odm+xml":{"source":"iana","compressible":true},"application/odx":{"source":"iana"},"application/oebps-package+xml":{"source":"iana","compressible":true,"extensions":["opf"]},"application/ogg":{"source":"iana","compressible":false,"extensions":["ogx"]},"application/omdoc+xml":{"source":"apache","compressible":true,"extensions":["omdoc"]},"application/onenote":{"source":"apache","extensions":["onetoc","onetoc2","onetmp","onepkg"]},"application/opc-nodeset+xml":{"source":"iana","compressible":true},"application/oscore":{"source":"iana"},"application/oxps":{"source":"iana","extensions":["oxps"]},"application/p21":{"source":"iana"},"application/p21+zip":{"source":"iana","compressible":false},"application/p2p-overlay+xml":{"source":"iana","compressible":true,"extensions":["relo"]},"application/parityfec":{"source":"iana"},"application/passport":{"source":"iana"},"application/patch-ops-error+xml":{"source":"iana","compressible":true,"extensions":["xer"]},"application/pdf":{"source":"iana","compressible":false,"extensions":["pdf"]},"application/pdx":{"source":"iana"},"application/pem-certificate-chain":{"source":"iana"},"application/pgp-encrypted":{"source":"iana","compressible":false,"extensions":["pgp"]},"application/pgp-keys":{"source":"iana","extensions":["asc"]},"application/pgp-signature":{"source":"iana","extensions":["asc","sig"]},"application/pics-rules":{"source":"apache","extensions":["prf"]},"application/pidf+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/pidf-diff+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/pkcs10":{"source":"iana","extensions":["p10"]},"application/pkcs12":{"source":"iana"},"application/pkcs7-mime":{"source":"iana","extensions":["p7m","p7c"]},"application/pkcs7-signature":{"source":"iana","extensions":["p7s"]},"application/pkcs8":{"source":"iana","extensions":["p8"]},"application/pkcs8-encrypted":{"source":"iana"},"application/pkix-attr-cert":{"source":"iana","extensions":["ac"]},"application/pkix-cert":{"source":"iana","extensions":["cer"]},"application/pkix-crl":{"source":"iana","extensions":["crl"]},"application/pkix-pkipath":{"source":"iana","extensions":["pkipath"]},"application/pkixcmp":{"source":"iana","extensions":["pki"]},"application/pls+xml":{"source":"iana","compressible":true,"extensions":["pls"]},"application/poc-settings+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/postscript":{"source":"iana","compressible":true,"extensions":["ai","eps","ps"]},"application/ppsp-tracker+json":{"source":"iana","compressible":true},"application/problem+json":{"source":"iana","compressible":true},"application/problem+xml":{"source":"iana","compressible":true},"application/provenance+xml":{"source":"iana","compressible":true,"extensions":["provx"]},"application/prs.alvestrand.titrax-sheet":{"source":"iana"},"application/prs.cww":{"source":"iana","extensions":["cww"]},"application/prs.cyn":{"source":"iana","charset":"7-BIT"},"application/prs.hpub+zip":{"source":"iana","compressible":false},"application/prs.nprend":{"source":"iana"},"application/prs.plucker":{"source":"iana"},"application/prs.rdf-xml-crypt":{"source":"iana"},"application/prs.xsf+xml":{"source":"iana","compressible":true},"application/pskc+xml":{"source":"iana","compressible":true,"extensions":["pskcxml"]},"application/pvd+json":{"source":"iana","compressible":true},"application/qsig":{"source":"iana"},"application/raml+yaml":{"compressible":true,"extensions":["raml"]},"application/raptorfec":{"source":"iana"},"application/rdap+json":{"source":"iana","compressible":true},"application/rdf+xml":{"source":"iana","compressible":true,"extensions":["rdf","owl"]},"application/reginfo+xml":{"source":"iana","compressible":true,"extensions":["rif"]},"application/relax-ng-compact-syntax":{"source":"iana","extensions":["rnc"]},"application/remote-printing":{"source":"iana"},"application/reputon+json":{"source":"iana","compressible":true},"application/resource-lists+xml":{"source":"iana","compressible":true,"extensions":["rl"]},"application/resource-lists-diff+xml":{"source":"iana","compressible":true,"extensions":["rld"]},"application/rfc+xml":{"source":"iana","compressible":true},"application/riscos":{"source":"iana"},"application/rlmi+xml":{"source":"iana","compressible":true},"application/rls-services+xml":{"source":"iana","compressible":true,"extensions":["rs"]},"application/route-apd+xml":{"source":"iana","compressible":true,"extensions":["rapd"]},"application/route-s-tsid+xml":{"source":"iana","compressible":true,"extensions":["sls"]},"application/route-usd+xml":{"source":"iana","compressible":true,"extensions":["rusd"]},"application/rpki-ghostbusters":{"source":"iana","extensions":["gbr"]},"application/rpki-manifest":{"source":"iana","extensions":["mft"]},"application/rpki-publication":{"source":"iana"},"application/rpki-roa":{"source":"iana","extensions":["roa"]},"application/rpki-updown":{"source":"iana"},"application/rsd+xml":{"source":"apache","compressible":true,"extensions":["rsd"]},"application/rss+xml":{"source":"apache","compressible":true,"extensions":["rss"]},"application/rtf":{"source":"iana","compressible":true,"extensions":["rtf"]},"application/rtploopback":{"source":"iana"},"application/rtx":{"source":"iana"},"application/samlassertion+xml":{"source":"iana","compressible":true},"application/samlmetadata+xml":{"source":"iana","compressible":true},"application/sarif+json":{"source":"iana","compressible":true},"application/sarif-external-properties+json":{"source":"iana","compressible":true},"application/sbe":{"source":"iana"},"application/sbml+xml":{"source":"iana","compressible":true,"extensions":["sbml"]},"application/scaip+xml":{"source":"iana","compressible":true},"application/scim+json":{"source":"iana","compressible":true},"application/scvp-cv-request":{"source":"iana","extensions":["scq"]},"application/scvp-cv-response":{"source":"iana","extensions":["scs"]},"application/scvp-vp-request":{"source":"iana","extensions":["spq"]},"application/scvp-vp-response":{"source":"iana","extensions":["spp"]},"application/sdp":{"source":"iana","extensions":["sdp"]},"application/secevent+jwt":{"source":"iana"},"application/senml+cbor":{"source":"iana"},"application/senml+json":{"source":"iana","compressible":true},"application/senml+xml":{"source":"iana","compressible":true,"extensions":["senmlx"]},"application/senml-etch+cbor":{"source":"iana"},"application/senml-etch+json":{"source":"iana","compressible":true},"application/senml-exi":{"source":"iana"},"application/sensml+cbor":{"source":"iana"},"application/sensml+json":{"source":"iana","compressible":true},"application/sensml+xml":{"source":"iana","compressible":true,"extensions":["sensmlx"]},"application/sensml-exi":{"source":"iana"},"application/sep+xml":{"source":"iana","compressible":true},"application/sep-exi":{"source":"iana"},"application/session-info":{"source":"iana"},"application/set-payment":{"source":"iana"},"application/set-payment-initiation":{"source":"iana","extensions":["setpay"]},"application/set-registration":{"source":"iana"},"application/set-registration-initiation":{"source":"iana","extensions":["setreg"]},"application/sgml":{"source":"iana"},"application/sgml-open-catalog":{"source":"iana"},"application/shf+xml":{"source":"iana","compressible":true,"extensions":["shf"]},"application/sieve":{"source":"iana","extensions":["siv","sieve"]},"application/simple-filter+xml":{"source":"iana","compressible":true},"application/simple-message-summary":{"source":"iana"},"application/simplesymbolcontainer":{"source":"iana"},"application/sipc":{"source":"iana"},"application/slate":{"source":"iana"},"application/smil":{"source":"iana"},"application/smil+xml":{"source":"iana","compressible":true,"extensions":["smi","smil"]},"application/smpte336m":{"source":"iana"},"application/soap+fastinfoset":{"source":"iana"},"application/soap+xml":{"source":"iana","compressible":true},"application/sparql-query":{"source":"iana","extensions":["rq"]},"application/sparql-results+xml":{"source":"iana","compressible":true,"extensions":["srx"]},"application/spdx+json":{"source":"iana","compressible":true},"application/spirits-event+xml":{"source":"iana","compressible":true},"application/sql":{"source":"iana"},"application/srgs":{"source":"iana","extensions":["gram"]},"application/srgs+xml":{"source":"iana","compressible":true,"extensions":["grxml"]},"application/sru+xml":{"source":"iana","compressible":true,"extensions":["sru"]},"application/ssdl+xml":{"source":"apache","compressible":true,"extensions":["ssdl"]},"application/ssml+xml":{"source":"iana","compressible":true,"extensions":["ssml"]},"application/stix+json":{"source":"iana","compressible":true},"application/swid+xml":{"source":"iana","compressible":true,"extensions":["swidtag"]},"application/tamp-apex-update":{"source":"iana"},"application/tamp-apex-update-confirm":{"source":"iana"},"application/tamp-community-update":{"source":"iana"},"application/tamp-community-update-confirm":{"source":"iana"},"application/tamp-error":{"source":"iana"},"application/tamp-sequence-adjust":{"source":"iana"},"application/tamp-sequence-adjust-confirm":{"source":"iana"},"application/tamp-status-query":{"source":"iana"},"application/tamp-status-response":{"source":"iana"},"application/tamp-update":{"source":"iana"},"application/tamp-update-confirm":{"source":"iana"},"application/tar":{"compressible":true},"application/taxii+json":{"source":"iana","compressible":true},"application/td+json":{"source":"iana","compressible":true},"application/tei+xml":{"source":"iana","compressible":true,"extensions":["tei","teicorpus"]},"application/tetra_isi":{"source":"iana"},"application/thraud+xml":{"source":"iana","compressible":true,"extensions":["tfi"]},"application/timestamp-query":{"source":"iana"},"application/timestamp-reply":{"source":"iana"},"application/timestamped-data":{"source":"iana","extensions":["tsd"]},"application/tlsrpt+gzip":{"source":"iana"},"application/tlsrpt+json":{"source":"iana","compressible":true},"application/tnauthlist":{"source":"iana"},"application/token-introspection+jwt":{"source":"iana"},"application/toml":{"compressible":true,"extensions":["toml"]},"application/trickle-ice-sdpfrag":{"source":"iana"},"application/trig":{"source":"iana","extensions":["trig"]},"application/ttml+xml":{"source":"iana","compressible":true,"extensions":["ttml"]},"application/tve-trigger":{"source":"iana"},"application/tzif":{"source":"iana"},"application/tzif-leap":{"source":"iana"},"application/ubjson":{"compressible":false,"extensions":["ubj"]},"application/ulpfec":{"source":"iana"},"application/urc-grpsheet+xml":{"source":"iana","compressible":true},"application/urc-ressheet+xml":{"source":"iana","compressible":true,"extensions":["rsheet"]},"application/urc-targetdesc+xml":{"source":"iana","compressible":true,"extensions":["td"]},"application/urc-uisocketdesc+xml":{"source":"iana","compressible":true},"application/vcard+json":{"source":"iana","compressible":true},"application/vcard+xml":{"source":"iana","compressible":true},"application/vemmi":{"source":"iana"},"application/vividence.scriptfile":{"source":"apache"},"application/vnd.1000minds.decision-model+xml":{"source":"iana","compressible":true,"extensions":["1km"]},"application/vnd.3gpp-prose+xml":{"source":"iana","compressible":true},"application/vnd.3gpp-prose-pc3ch+xml":{"source":"iana","compressible":true},"application/vnd.3gpp-v2x-local-service-information":{"source":"iana"},"application/vnd.3gpp.5gnas":{"source":"iana"},"application/vnd.3gpp.access-transfer-events+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.bsf+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.gmop+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.gtpc":{"source":"iana"},"application/vnd.3gpp.interworking-data":{"source":"iana"},"application/vnd.3gpp.lpp":{"source":"iana"},"application/vnd.3gpp.mc-signalling-ear":{"source":"iana"},"application/vnd.3gpp.mcdata-affiliation-command+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-payload":{"source":"iana"},"application/vnd.3gpp.mcdata-service-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-signalling":{"source":"iana"},"application/vnd.3gpp.mcdata-ue-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcdata-user-profile+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-affiliation-command+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-floor-request+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-location-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-mbms-usage-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-service-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-signed+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-ue-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-ue-init-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcptt-user-profile+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-affiliation-command+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-affiliation-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-location-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-mbms-usage-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-service-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-transmission-request+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-ue-config+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mcvideo-user-profile+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.mid-call+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.ngap":{"source":"iana"},"application/vnd.3gpp.pfcp":{"source":"iana"},"application/vnd.3gpp.pic-bw-large":{"source":"iana","extensions":["plb"]},"application/vnd.3gpp.pic-bw-small":{"source":"iana","extensions":["psb"]},"application/vnd.3gpp.pic-bw-var":{"source":"iana","extensions":["pvb"]},"application/vnd.3gpp.s1ap":{"source":"iana"},"application/vnd.3gpp.sms":{"source":"iana"},"application/vnd.3gpp.sms+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.srvcc-ext+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.srvcc-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.state-and-event-info+xml":{"source":"iana","compressible":true},"application/vnd.3gpp.ussd+xml":{"source":"iana","compressible":true},"application/vnd.3gpp2.bcmcsinfo+xml":{"source":"iana","compressible":true},"application/vnd.3gpp2.sms":{"source":"iana"},"application/vnd.3gpp2.tcap":{"source":"iana","extensions":["tcap"]},"application/vnd.3lightssoftware.imagescal":{"source":"iana"},"application/vnd.3m.post-it-notes":{"source":"iana","extensions":["pwn"]},"application/vnd.accpac.simply.aso":{"source":"iana","extensions":["aso"]},"application/vnd.accpac.simply.imp":{"source":"iana","extensions":["imp"]},"application/vnd.acucobol":{"source":"iana","extensions":["acu"]},"application/vnd.acucorp":{"source":"iana","extensions":["atc","acutc"]},"application/vnd.adobe.air-application-installer-package+zip":{"source":"apache","compressible":false,"extensions":["air"]},"application/vnd.adobe.flash.movie":{"source":"iana"},"application/vnd.adobe.formscentral.fcdt":{"source":"iana","extensions":["fcdt"]},"application/vnd.adobe.fxp":{"source":"iana","extensions":["fxp","fxpl"]},"application/vnd.adobe.partial-upload":{"source":"iana"},"application/vnd.adobe.xdp+xml":{"source":"iana","compressible":true,"extensions":["xdp"]},"application/vnd.adobe.xfdf":{"source":"iana","extensions":["xfdf"]},"application/vnd.aether.imp":{"source":"iana"},"application/vnd.afpc.afplinedata":{"source":"iana"},"application/vnd.afpc.afplinedata-pagedef":{"source":"iana"},"application/vnd.afpc.cmoca-cmresource":{"source":"iana"},"application/vnd.afpc.foca-charset":{"source":"iana"},"application/vnd.afpc.foca-codedfont":{"source":"iana"},"application/vnd.afpc.foca-codepage":{"source":"iana"},"application/vnd.afpc.modca":{"source":"iana"},"application/vnd.afpc.modca-cmtable":{"source":"iana"},"application/vnd.afpc.modca-formdef":{"source":"iana"},"application/vnd.afpc.modca-mediummap":{"source":"iana"},"application/vnd.afpc.modca-objectcontainer":{"source":"iana"},"application/vnd.afpc.modca-overlay":{"source":"iana"},"application/vnd.afpc.modca-pagesegment":{"source":"iana"},"application/vnd.age":{"source":"iana","extensions":["age"]},"application/vnd.ah-barcode":{"source":"iana"},"application/vnd.ahead.space":{"source":"iana","extensions":["ahead"]},"application/vnd.airzip.filesecure.azf":{"source":"iana","extensions":["azf"]},"application/vnd.airzip.filesecure.azs":{"source":"iana","extensions":["azs"]},"application/vnd.amadeus+json":{"source":"iana","compressible":true},"application/vnd.amazon.ebook":{"source":"apache","extensions":["azw"]},"application/vnd.amazon.mobi8-ebook":{"source":"iana"},"application/vnd.americandynamics.acc":{"source":"iana","extensions":["acc"]},"application/vnd.amiga.ami":{"source":"iana","extensions":["ami"]},"application/vnd.amundsen.maze+xml":{"source":"iana","compressible":true},"application/vnd.android.ota":{"source":"iana"},"application/vnd.android.package-archive":{"source":"apache","compressible":false,"extensions":["apk"]},"application/vnd.anki":{"source":"iana"},"application/vnd.anser-web-certificate-issue-initiation":{"source":"iana","extensions":["cii"]},"application/vnd.anser-web-funds-transfer-initiation":{"source":"apache","extensions":["fti"]},"application/vnd.antix.game-component":{"source":"iana","extensions":["atx"]},"application/vnd.apache.arrow.file":{"source":"iana"},"application/vnd.apache.arrow.stream":{"source":"iana"},"application/vnd.apache.thrift.binary":{"source":"iana"},"application/vnd.apache.thrift.compact":{"source":"iana"},"application/vnd.apache.thrift.json":{"source":"iana"},"application/vnd.api+json":{"source":"iana","compressible":true},"application/vnd.aplextor.warrp+json":{"source":"iana","compressible":true},"application/vnd.apothekende.reservation+json":{"source":"iana","compressible":true},"application/vnd.apple.installer+xml":{"source":"iana","compressible":true,"extensions":["mpkg"]},"application/vnd.apple.keynote":{"source":"iana","extensions":["key"]},"application/vnd.apple.mpegurl":{"source":"iana","extensions":["m3u8"]},"application/vnd.apple.numbers":{"source":"iana","extensions":["numbers"]},"application/vnd.apple.pages":{"source":"iana","extensions":["pages"]},"application/vnd.apple.pkpass":{"compressible":false,"extensions":["pkpass"]},"application/vnd.arastra.swi":{"source":"iana"},"application/vnd.aristanetworks.swi":{"source":"iana","extensions":["swi"]},"application/vnd.artisan+json":{"source":"iana","compressible":true},"application/vnd.artsquare":{"source":"iana"},"application/vnd.astraea-software.iota":{"source":"iana","extensions":["iota"]},"application/vnd.audiograph":{"source":"iana","extensions":["aep"]},"application/vnd.autopackage":{"source":"iana"},"application/vnd.avalon+json":{"source":"iana","compressible":true},"application/vnd.avistar+xml":{"source":"iana","compressible":true},"application/vnd.balsamiq.bmml+xml":{"source":"iana","compressible":true,"extensions":["bmml"]},"application/vnd.balsamiq.bmpr":{"source":"iana"},"application/vnd.banana-accounting":{"source":"iana"},"application/vnd.bbf.usp.error":{"source":"iana"},"application/vnd.bbf.usp.msg":{"source":"iana"},"application/vnd.bbf.usp.msg+json":{"source":"iana","compressible":true},"application/vnd.bekitzur-stech+json":{"source":"iana","compressible":true},"application/vnd.bint.med-content":{"source":"iana"},"application/vnd.biopax.rdf+xml":{"source":"iana","compressible":true},"application/vnd.blink-idb-value-wrapper":{"source":"iana"},"application/vnd.blueice.multipass":{"source":"iana","extensions":["mpm"]},"application/vnd.bluetooth.ep.oob":{"source":"iana"},"application/vnd.bluetooth.le.oob":{"source":"iana"},"application/vnd.bmi":{"source":"iana","extensions":["bmi"]},"application/vnd.bpf":{"source":"iana"},"application/vnd.bpf3":{"source":"iana"},"application/vnd.businessobjects":{"source":"iana","extensions":["rep"]},"application/vnd.byu.uapi+json":{"source":"iana","compressible":true},"application/vnd.cab-jscript":{"source":"iana"},"application/vnd.canon-cpdl":{"source":"iana"},"application/vnd.canon-lips":{"source":"iana"},"application/vnd.capasystems-pg+json":{"source":"iana","compressible":true},"application/vnd.cendio.thinlinc.clientconf":{"source":"iana"},"application/vnd.century-systems.tcp_stream":{"source":"iana"},"application/vnd.chemdraw+xml":{"source":"iana","compressible":true,"extensions":["cdxml"]},"application/vnd.chess-pgn":{"source":"iana"},"application/vnd.chipnuts.karaoke-mmd":{"source":"iana","extensions":["mmd"]},"application/vnd.ciedi":{"source":"iana"},"application/vnd.cinderella":{"source":"iana","extensions":["cdy"]},"application/vnd.cirpack.isdn-ext":{"source":"iana"},"application/vnd.citationstyles.style+xml":{"source":"iana","compressible":true,"extensions":["csl"]},"application/vnd.claymore":{"source":"iana","extensions":["cla"]},"application/vnd.cloanto.rp9":{"source":"iana","extensions":["rp9"]},"application/vnd.clonk.c4group":{"source":"iana","extensions":["c4g","c4d","c4f","c4p","c4u"]},"application/vnd.cluetrust.cartomobile-config":{"source":"iana","extensions":["c11amc"]},"application/vnd.cluetrust.cartomobile-config-pkg":{"source":"iana","extensions":["c11amz"]},"application/vnd.coffeescript":{"source":"iana"},"application/vnd.collabio.xodocuments.document":{"source":"iana"},"application/vnd.collabio.xodocuments.document-template":{"source":"iana"},"application/vnd.collabio.xodocuments.presentation":{"source":"iana"},"application/vnd.collabio.xodocuments.presentation-template":{"source":"iana"},"application/vnd.collabio.xodocuments.spreadsheet":{"source":"iana"},"application/vnd.collabio.xodocuments.spreadsheet-template":{"source":"iana"},"application/vnd.collection+json":{"source":"iana","compressible":true},"application/vnd.collection.doc+json":{"source":"iana","compressible":true},"application/vnd.collection.next+json":{"source":"iana","compressible":true},"application/vnd.comicbook+zip":{"source":"iana","compressible":false},"application/vnd.comicbook-rar":{"source":"iana"},"application/vnd.commerce-battelle":{"source":"iana"},"application/vnd.commonspace":{"source":"iana","extensions":["csp"]},"application/vnd.contact.cmsg":{"source":"iana","extensions":["cdbcmsg"]},"application/vnd.coreos.ignition+json":{"source":"iana","compressible":true},"application/vnd.cosmocaller":{"source":"iana","extensions":["cmc"]},"application/vnd.crick.clicker":{"source":"iana","extensions":["clkx"]},"application/vnd.crick.clicker.keyboard":{"source":"iana","extensions":["clkk"]},"application/vnd.crick.clicker.palette":{"source":"iana","extensions":["clkp"]},"application/vnd.crick.clicker.template":{"source":"iana","extensions":["clkt"]},"application/vnd.crick.clicker.wordbank":{"source":"iana","extensions":["clkw"]},"application/vnd.criticaltools.wbs+xml":{"source":"iana","compressible":true,"extensions":["wbs"]},"application/vnd.cryptii.pipe+json":{"source":"iana","compressible":true},"application/vnd.crypto-shade-file":{"source":"iana"},"application/vnd.cryptomator.encrypted":{"source":"iana"},"application/vnd.cryptomator.vault":{"source":"iana"},"application/vnd.ctc-posml":{"source":"iana","extensions":["pml"]},"application/vnd.ctct.ws+xml":{"source":"iana","compressible":true},"application/vnd.cups-pdf":{"source":"iana"},"application/vnd.cups-postscript":{"source":"iana"},"application/vnd.cups-ppd":{"source":"iana","extensions":["ppd"]},"application/vnd.cups-raster":{"source":"iana"},"application/vnd.cups-raw":{"source":"iana"},"application/vnd.curl":{"source":"iana"},"application/vnd.curl.car":{"source":"apache","extensions":["car"]},"application/vnd.curl.pcurl":{"source":"apache","extensions":["pcurl"]},"application/vnd.cyan.dean.root+xml":{"source":"iana","compressible":true},"application/vnd.cybank":{"source":"iana"},"application/vnd.cyclonedx+json":{"source":"iana","compressible":true},"application/vnd.cyclonedx+xml":{"source":"iana","compressible":true},"application/vnd.d2l.coursepackage1p0+zip":{"source":"iana","compressible":false},"application/vnd.d3m-dataset":{"source":"iana"},"application/vnd.d3m-problem":{"source":"iana"},"application/vnd.dart":{"source":"iana","compressible":true,"extensions":["dart"]},"application/vnd.data-vision.rdz":{"source":"iana","extensions":["rdz"]},"application/vnd.datapackage+json":{"source":"iana","compressible":true},"application/vnd.dataresource+json":{"source":"iana","compressible":true},"application/vnd.dbf":{"source":"iana","extensions":["dbf"]},"application/vnd.debian.binary-package":{"source":"iana"},"application/vnd.dece.data":{"source":"iana","extensions":["uvf","uvvf","uvd","uvvd"]},"application/vnd.dece.ttml+xml":{"source":"iana","compressible":true,"extensions":["uvt","uvvt"]},"application/vnd.dece.unspecified":{"source":"iana","extensions":["uvx","uvvx"]},"application/vnd.dece.zip":{"source":"iana","extensions":["uvz","uvvz"]},"application/vnd.denovo.fcselayout-link":{"source":"iana","extensions":["fe_launch"]},"application/vnd.desmume.movie":{"source":"iana"},"application/vnd.dir-bi.plate-dl-nosuffix":{"source":"iana"},"application/vnd.dm.delegation+xml":{"source":"iana","compressible":true},"application/vnd.dna":{"source":"iana","extensions":["dna"]},"application/vnd.document+json":{"source":"iana","compressible":true},"application/vnd.dolby.mlp":{"source":"apache","extensions":["mlp"]},"application/vnd.dolby.mobile.1":{"source":"iana"},"application/vnd.dolby.mobile.2":{"source":"iana"},"application/vnd.doremir.scorecloud-binary-document":{"source":"iana"},"application/vnd.dpgraph":{"source":"iana","extensions":["dpg"]},"application/vnd.dreamfactory":{"source":"iana","extensions":["dfac"]},"application/vnd.drive+json":{"source":"iana","compressible":true},"application/vnd.ds-keypoint":{"source":"apache","extensions":["kpxx"]},"application/vnd.dtg.local":{"source":"iana"},"application/vnd.dtg.local.flash":{"source":"iana"},"application/vnd.dtg.local.html":{"source":"iana"},"application/vnd.dvb.ait":{"source":"iana","extensions":["ait"]},"application/vnd.dvb.dvbisl+xml":{"source":"iana","compressible":true},"application/vnd.dvb.dvbj":{"source":"iana"},"application/vnd.dvb.esgcontainer":{"source":"iana"},"application/vnd.dvb.ipdcdftnotifaccess":{"source":"iana"},"application/vnd.dvb.ipdcesgaccess":{"source":"iana"},"application/vnd.dvb.ipdcesgaccess2":{"source":"iana"},"application/vnd.dvb.ipdcesgpdd":{"source":"iana"},"application/vnd.dvb.ipdcroaming":{"source":"iana"},"application/vnd.dvb.iptv.alfec-base":{"source":"iana"},"application/vnd.dvb.iptv.alfec-enhancement":{"source":"iana"},"application/vnd.dvb.notif-aggregate-root+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-container+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-generic+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-ia-msglist+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-ia-registration-request+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-ia-registration-response+xml":{"source":"iana","compressible":true},"application/vnd.dvb.notif-init+xml":{"source":"iana","compressible":true},"application/vnd.dvb.pfr":{"source":"iana"},"application/vnd.dvb.service":{"source":"iana","extensions":["svc"]},"application/vnd.dxr":{"source":"iana"},"application/vnd.dynageo":{"source":"iana","extensions":["geo"]},"application/vnd.dzr":{"source":"iana"},"application/vnd.easykaraoke.cdgdownload":{"source":"iana"},"application/vnd.ecdis-update":{"source":"iana"},"application/vnd.ecip.rlp":{"source":"iana"},"application/vnd.eclipse.ditto+json":{"source":"iana","compressible":true},"application/vnd.ecowin.chart":{"source":"iana","extensions":["mag"]},"application/vnd.ecowin.filerequest":{"source":"iana"},"application/vnd.ecowin.fileupdate":{"source":"iana"},"application/vnd.ecowin.series":{"source":"iana"},"application/vnd.ecowin.seriesrequest":{"source":"iana"},"application/vnd.ecowin.seriesupdate":{"source":"iana"},"application/vnd.efi.img":{"source":"iana"},"application/vnd.efi.iso":{"source":"iana"},"application/vnd.emclient.accessrequest+xml":{"source":"iana","compressible":true},"application/vnd.enliven":{"source":"iana","extensions":["nml"]},"application/vnd.enphase.envoy":{"source":"iana"},"application/vnd.eprints.data+xml":{"source":"iana","compressible":true},"application/vnd.epson.esf":{"source":"iana","extensions":["esf"]},"application/vnd.epson.msf":{"source":"iana","extensions":["msf"]},"application/vnd.epson.quickanime":{"source":"iana","extensions":["qam"]},"application/vnd.epson.salt":{"source":"iana","extensions":["slt"]},"application/vnd.epson.ssf":{"source":"iana","extensions":["ssf"]},"application/vnd.ericsson.quickcall":{"source":"iana"},"application/vnd.espass-espass+zip":{"source":"iana","compressible":false},"application/vnd.eszigno3+xml":{"source":"iana","compressible":true,"extensions":["es3","et3"]},"application/vnd.etsi.aoc+xml":{"source":"iana","compressible":true},"application/vnd.etsi.asic-e+zip":{"source":"iana","compressible":false},"application/vnd.etsi.asic-s+zip":{"source":"iana","compressible":false},"application/vnd.etsi.cug+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvcommand+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvdiscovery+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvprofile+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsad-bc+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsad-cod+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsad-npvr+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvservice+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvsync+xml":{"source":"iana","compressible":true},"application/vnd.etsi.iptvueprofile+xml":{"source":"iana","compressible":true},"application/vnd.etsi.mcid+xml":{"source":"iana","compressible":true},"application/vnd.etsi.mheg5":{"source":"iana"},"application/vnd.etsi.overload-control-policy-dataset+xml":{"source":"iana","compressible":true},"application/vnd.etsi.pstn+xml":{"source":"iana","compressible":true},"application/vnd.etsi.sci+xml":{"source":"iana","compressible":true},"application/vnd.etsi.simservs+xml":{"source":"iana","compressible":true},"application/vnd.etsi.timestamp-token":{"source":"iana"},"application/vnd.etsi.tsl+xml":{"source":"iana","compressible":true},"application/vnd.etsi.tsl.der":{"source":"iana"},"application/vnd.eu.kasparian.car+json":{"source":"iana","compressible":true},"application/vnd.eudora.data":{"source":"iana"},"application/vnd.evolv.ecig.profile":{"source":"iana"},"application/vnd.evolv.ecig.settings":{"source":"iana"},"application/vnd.evolv.ecig.theme":{"source":"iana"},"application/vnd.exstream-empower+zip":{"source":"iana","compressible":false},"application/vnd.exstream-package":{"source":"iana"},"application/vnd.ezpix-album":{"source":"iana","extensions":["ez2"]},"application/vnd.ezpix-package":{"source":"iana","extensions":["ez3"]},"application/vnd.f-secure.mobile":{"source":"iana"},"application/vnd.familysearch.gedcom+zip":{"source":"iana","compressible":false},"application/vnd.fastcopy-disk-image":{"source":"iana"},"application/vnd.fdf":{"source":"iana","extensions":["fdf"]},"application/vnd.fdsn.mseed":{"source":"iana","extensions":["mseed"]},"application/vnd.fdsn.seed":{"source":"iana","extensions":["seed","dataless"]},"application/vnd.ffsns":{"source":"iana"},"application/vnd.ficlab.flb+zip":{"source":"iana","compressible":false},"application/vnd.filmit.zfc":{"source":"iana"},"application/vnd.fints":{"source":"iana"},"application/vnd.firemonkeys.cloudcell":{"source":"iana"},"application/vnd.flographit":{"source":"iana","extensions":["gph"]},"application/vnd.fluxtime.clip":{"source":"iana","extensions":["ftc"]},"application/vnd.font-fontforge-sfd":{"source":"iana"},"application/vnd.framemaker":{"source":"iana","extensions":["fm","frame","maker","book"]},"application/vnd.frogans.fnc":{"source":"iana","extensions":["fnc"]},"application/vnd.frogans.ltf":{"source":"iana","extensions":["ltf"]},"application/vnd.fsc.weblaunch":{"source":"iana","extensions":["fsc"]},"application/vnd.fujifilm.fb.docuworks":{"source":"iana"},"application/vnd.fujifilm.fb.docuworks.binder":{"source":"iana"},"application/vnd.fujifilm.fb.docuworks.container":{"source":"iana"},"application/vnd.fujifilm.fb.jfi+xml":{"source":"iana","compressible":true},"application/vnd.fujitsu.oasys":{"source":"iana","extensions":["oas"]},"application/vnd.fujitsu.oasys2":{"source":"iana","extensions":["oa2"]},"application/vnd.fujitsu.oasys3":{"source":"iana","extensions":["oa3"]},"application/vnd.fujitsu.oasysgp":{"source":"iana","extensions":["fg5"]},"application/vnd.fujitsu.oasysprs":{"source":"iana","extensions":["bh2"]},"application/vnd.fujixerox.art-ex":{"source":"iana"},"application/vnd.fujixerox.art4":{"source":"iana"},"application/vnd.fujixerox.ddd":{"source":"iana","extensions":["ddd"]},"application/vnd.fujixerox.docuworks":{"source":"iana","extensions":["xdw"]},"application/vnd.fujixerox.docuworks.binder":{"source":"iana","extensions":["xbd"]},"application/vnd.fujixerox.docuworks.container":{"source":"iana"},"application/vnd.fujixerox.hbpl":{"source":"iana"},"application/vnd.fut-misnet":{"source":"iana"},"application/vnd.futoin+cbor":{"source":"iana"},"application/vnd.futoin+json":{"source":"iana","compressible":true},"application/vnd.fuzzysheet":{"source":"iana","extensions":["fzs"]},"application/vnd.genomatix.tuxedo":{"source":"iana","extensions":["txd"]},"application/vnd.gentics.grd+json":{"source":"iana","compressible":true},"application/vnd.geo+json":{"source":"iana","compressible":true},"application/vnd.geocube+xml":{"source":"iana","compressible":true},"application/vnd.geogebra.file":{"source":"iana","extensions":["ggb"]},"application/vnd.geogebra.slides":{"source":"iana"},"application/vnd.geogebra.tool":{"source":"iana","extensions":["ggt"]},"application/vnd.geometry-explorer":{"source":"iana","extensions":["gex","gre"]},"application/vnd.geonext":{"source":"iana","extensions":["gxt"]},"application/vnd.geoplan":{"source":"iana","extensions":["g2w"]},"application/vnd.geospace":{"source":"iana","extensions":["g3w"]},"application/vnd.gerber":{"source":"iana"},"application/vnd.globalplatform.card-content-mgt":{"source":"iana"},"application/vnd.globalplatform.card-content-mgt-response":{"source":"iana"},"application/vnd.gmx":{"source":"iana","extensions":["gmx"]},"application/vnd.google-apps.document":{"compressible":false,"extensions":["gdoc"]},"application/vnd.google-apps.presentation":{"compressible":false,"extensions":["gslides"]},"application/vnd.google-apps.spreadsheet":{"compressible":false,"extensions":["gsheet"]},"application/vnd.google-earth.kml+xml":{"source":"iana","compressible":true,"extensions":["kml"]},"application/vnd.google-earth.kmz":{"source":"iana","compressible":false,"extensions":["kmz"]},"application/vnd.gov.sk.e-form+xml":{"source":"iana","compressible":true},"application/vnd.gov.sk.e-form+zip":{"source":"iana","compressible":false},"application/vnd.gov.sk.xmldatacontainer+xml":{"source":"iana","compressible":true},"application/vnd.grafeq":{"source":"iana","extensions":["gqf","gqs"]},"application/vnd.gridmp":{"source":"iana"},"application/vnd.groove-account":{"source":"iana","extensions":["gac"]},"application/vnd.groove-help":{"source":"iana","extensions":["ghf"]},"application/vnd.groove-identity-message":{"source":"iana","extensions":["gim"]},"application/vnd.groove-injector":{"source":"iana","extensions":["grv"]},"application/vnd.groove-tool-message":{"source":"iana","extensions":["gtm"]},"application/vnd.groove-tool-template":{"source":"iana","extensions":["tpl"]},"application/vnd.groove-vcard":{"source":"iana","extensions":["vcg"]},"application/vnd.hal+json":{"source":"iana","compressible":true},"application/vnd.hal+xml":{"source":"iana","compressible":true,"extensions":["hal"]},"application/vnd.handheld-entertainment+xml":{"source":"iana","compressible":true,"extensions":["zmm"]},"application/vnd.hbci":{"source":"iana","extensions":["hbci"]},"application/vnd.hc+json":{"source":"iana","compressible":true},"application/vnd.hcl-bireports":{"source":"iana"},"application/vnd.hdt":{"source":"iana"},"application/vnd.heroku+json":{"source":"iana","compressible":true},"application/vnd.hhe.lesson-player":{"source":"iana","extensions":["les"]},"application/vnd.hl7cda+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.hl7v2+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.hp-hpgl":{"source":"iana","extensions":["hpgl"]},"application/vnd.hp-hpid":{"source":"iana","extensions":["hpid"]},"application/vnd.hp-hps":{"source":"iana","extensions":["hps"]},"application/vnd.hp-jlyt":{"source":"iana","extensions":["jlt"]},"application/vnd.hp-pcl":{"source":"iana","extensions":["pcl"]},"application/vnd.hp-pclxl":{"source":"iana","extensions":["pclxl"]},"application/vnd.httphone":{"source":"iana"},"application/vnd.hydrostatix.sof-data":{"source":"iana","extensions":["sfd-hdstx"]},"application/vnd.hyper+json":{"source":"iana","compressible":true},"application/vnd.hyper-item+json":{"source":"iana","compressible":true},"application/vnd.hyperdrive+json":{"source":"iana","compressible":true},"application/vnd.hzn-3d-crossword":{"source":"iana"},"application/vnd.ibm.afplinedata":{"source":"iana"},"application/vnd.ibm.electronic-media":{"source":"iana"},"application/vnd.ibm.minipay":{"source":"iana","extensions":["mpy"]},"application/vnd.ibm.modcap":{"source":"iana","extensions":["afp","listafp","list3820"]},"application/vnd.ibm.rights-management":{"source":"iana","extensions":["irm"]},"application/vnd.ibm.secure-container":{"source":"iana","extensions":["sc"]},"application/vnd.iccprofile":{"source":"iana","extensions":["icc","icm"]},"application/vnd.ieee.1905":{"source":"iana"},"application/vnd.igloader":{"source":"iana","extensions":["igl"]},"application/vnd.imagemeter.folder+zip":{"source":"iana","compressible":false},"application/vnd.imagemeter.image+zip":{"source":"iana","compressible":false},"application/vnd.immervision-ivp":{"source":"iana","extensions":["ivp"]},"application/vnd.immervision-ivu":{"source":"iana","extensions":["ivu"]},"application/vnd.ims.imsccv1p1":{"source":"iana"},"application/vnd.ims.imsccv1p2":{"source":"iana"},"application/vnd.ims.imsccv1p3":{"source":"iana"},"application/vnd.ims.lis.v2.result+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolconsumerprofile+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolproxy+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolproxy.id+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolsettings+json":{"source":"iana","compressible":true},"application/vnd.ims.lti.v2.toolsettings.simple+json":{"source":"iana","compressible":true},"application/vnd.informedcontrol.rms+xml":{"source":"iana","compressible":true},"application/vnd.informix-visionary":{"source":"iana"},"application/vnd.infotech.project":{"source":"iana"},"application/vnd.infotech.project+xml":{"source":"iana","compressible":true},"application/vnd.innopath.wamp.notification":{"source":"iana"},"application/vnd.insors.igm":{"source":"iana","extensions":["igm"]},"application/vnd.intercon.formnet":{"source":"iana","extensions":["xpw","xpx"]},"application/vnd.intergeo":{"source":"iana","extensions":["i2g"]},"application/vnd.intertrust.digibox":{"source":"iana"},"application/vnd.intertrust.nncp":{"source":"iana"},"application/vnd.intu.qbo":{"source":"iana","extensions":["qbo"]},"application/vnd.intu.qfx":{"source":"iana","extensions":["qfx"]},"application/vnd.iptc.g2.catalogitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.conceptitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.knowledgeitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.newsitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.newsmessage+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.packageitem+xml":{"source":"iana","compressible":true},"application/vnd.iptc.g2.planningitem+xml":{"source":"iana","compressible":true},"application/vnd.ipunplugged.rcprofile":{"source":"iana","extensions":["rcprofile"]},"application/vnd.irepository.package+xml":{"source":"iana","compressible":true,"extensions":["irp"]},"application/vnd.is-xpr":{"source":"iana","extensions":["xpr"]},"application/vnd.isac.fcs":{"source":"iana","extensions":["fcs"]},"application/vnd.iso11783-10+zip":{"source":"iana","compressible":false},"application/vnd.jam":{"source":"iana","extensions":["jam"]},"application/vnd.japannet-directory-service":{"source":"iana"},"application/vnd.japannet-jpnstore-wakeup":{"source":"iana"},"application/vnd.japannet-payment-wakeup":{"source":"iana"},"application/vnd.japannet-registration":{"source":"iana"},"application/vnd.japannet-registration-wakeup":{"source":"iana"},"application/vnd.japannet-setstore-wakeup":{"source":"iana"},"application/vnd.japannet-verification":{"source":"iana"},"application/vnd.japannet-verification-wakeup":{"source":"iana"},"application/vnd.jcp.javame.midlet-rms":{"source":"iana","extensions":["rms"]},"application/vnd.jisp":{"source":"iana","extensions":["jisp"]},"application/vnd.joost.joda-archive":{"source":"iana","extensions":["joda"]},"application/vnd.jsk.isdn-ngn":{"source":"iana"},"application/vnd.kahootz":{"source":"iana","extensions":["ktz","ktr"]},"application/vnd.kde.karbon":{"source":"iana","extensions":["karbon"]},"application/vnd.kde.kchart":{"source":"iana","extensions":["chrt"]},"application/vnd.kde.kformula":{"source":"iana","extensions":["kfo"]},"application/vnd.kde.kivio":{"source":"iana","extensions":["flw"]},"application/vnd.kde.kontour":{"source":"iana","extensions":["kon"]},"application/vnd.kde.kpresenter":{"source":"iana","extensions":["kpr","kpt"]},"application/vnd.kde.kspread":{"source":"iana","extensions":["ksp"]},"application/vnd.kde.kword":{"source":"iana","extensions":["kwd","kwt"]},"application/vnd.kenameaapp":{"source":"iana","extensions":["htke"]},"application/vnd.kidspiration":{"source":"iana","extensions":["kia"]},"application/vnd.kinar":{"source":"iana","extensions":["kne","knp"]},"application/vnd.koan":{"source":"iana","extensions":["skp","skd","skt","skm"]},"application/vnd.kodak-descriptor":{"source":"iana","extensions":["sse"]},"application/vnd.las":{"source":"iana"},"application/vnd.las.las+json":{"source":"iana","compressible":true},"application/vnd.las.las+xml":{"source":"iana","compressible":true,"extensions":["lasxml"]},"application/vnd.laszip":{"source":"iana"},"application/vnd.leap+json":{"source":"iana","compressible":true},"application/vnd.liberty-request+xml":{"source":"iana","compressible":true},"application/vnd.llamagraphics.life-balance.desktop":{"source":"iana","extensions":["lbd"]},"application/vnd.llamagraphics.life-balance.exchange+xml":{"source":"iana","compressible":true,"extensions":["lbe"]},"application/vnd.logipipe.circuit+zip":{"source":"iana","compressible":false},"application/vnd.loom":{"source":"iana"},"application/vnd.lotus-1-2-3":{"source":"iana","extensions":["123"]},"application/vnd.lotus-approach":{"source":"iana","extensions":["apr"]},"application/vnd.lotus-freelance":{"source":"iana","extensions":["pre"]},"application/vnd.lotus-notes":{"source":"iana","extensions":["nsf"]},"application/vnd.lotus-organizer":{"source":"iana","extensions":["org"]},"application/vnd.lotus-screencam":{"source":"iana","extensions":["scm"]},"application/vnd.lotus-wordpro":{"source":"iana","extensions":["lwp"]},"application/vnd.macports.portpkg":{"source":"iana","extensions":["portpkg"]},"application/vnd.mapbox-vector-tile":{"source":"iana","extensions":["mvt"]},"application/vnd.marlin.drm.actiontoken+xml":{"source":"iana","compressible":true},"application/vnd.marlin.drm.conftoken+xml":{"source":"iana","compressible":true},"application/vnd.marlin.drm.license+xml":{"source":"iana","compressible":true},"application/vnd.marlin.drm.mdcf":{"source":"iana"},"application/vnd.mason+json":{"source":"iana","compressible":true},"application/vnd.maxar.archive.3tz+zip":{"source":"iana","compressible":false},"application/vnd.maxmind.maxmind-db":{"source":"iana"},"application/vnd.mcd":{"source":"iana","extensions":["mcd"]},"application/vnd.medcalcdata":{"source":"iana","extensions":["mc1"]},"application/vnd.mediastation.cdkey":{"source":"iana","extensions":["cdkey"]},"application/vnd.meridian-slingshot":{"source":"iana"},"application/vnd.mfer":{"source":"iana","extensions":["mwf"]},"application/vnd.mfmp":{"source":"iana","extensions":["mfm"]},"application/vnd.micro+json":{"source":"iana","compressible":true},"application/vnd.micrografx.flo":{"source":"iana","extensions":["flo"]},"application/vnd.micrografx.igx":{"source":"iana","extensions":["igx"]},"application/vnd.microsoft.portable-executable":{"source":"iana"},"application/vnd.microsoft.windows.thumbnail-cache":{"source":"iana"},"application/vnd.miele+json":{"source":"iana","compressible":true},"application/vnd.mif":{"source":"iana","extensions":["mif"]},"application/vnd.minisoft-hp3000-save":{"source":"iana"},"application/vnd.mitsubishi.misty-guard.trustweb":{"source":"iana"},"application/vnd.mobius.daf":{"source":"iana","extensions":["daf"]},"application/vnd.mobius.dis":{"source":"iana","extensions":["dis"]},"application/vnd.mobius.mbk":{"source":"iana","extensions":["mbk"]},"application/vnd.mobius.mqy":{"source":"iana","extensions":["mqy"]},"application/vnd.mobius.msl":{"source":"iana","extensions":["msl"]},"application/vnd.mobius.plc":{"source":"iana","extensions":["plc"]},"application/vnd.mobius.txf":{"source":"iana","extensions":["txf"]},"application/vnd.mophun.application":{"source":"iana","extensions":["mpn"]},"application/vnd.mophun.certificate":{"source":"iana","extensions":["mpc"]},"application/vnd.motorola.flexsuite":{"source":"iana"},"application/vnd.motorola.flexsuite.adsi":{"source":"iana"},"application/vnd.motorola.flexsuite.fis":{"source":"iana"},"application/vnd.motorola.flexsuite.gotap":{"source":"iana"},"application/vnd.motorola.flexsuite.kmr":{"source":"iana"},"application/vnd.motorola.flexsuite.ttc":{"source":"iana"},"application/vnd.motorola.flexsuite.wem":{"source":"iana"},"application/vnd.motorola.iprm":{"source":"iana"},"application/vnd.mozilla.xul+xml":{"source":"iana","compressible":true,"extensions":["xul"]},"application/vnd.ms-3mfdocument":{"source":"iana"},"application/vnd.ms-artgalry":{"source":"iana","extensions":["cil"]},"application/vnd.ms-asf":{"source":"iana"},"application/vnd.ms-cab-compressed":{"source":"iana","extensions":["cab"]},"application/vnd.ms-color.iccprofile":{"source":"apache"},"application/vnd.ms-excel":{"source":"iana","compressible":false,"extensions":["xls","xlm","xla","xlc","xlt","xlw"]},"application/vnd.ms-excel.addin.macroenabled.12":{"source":"iana","extensions":["xlam"]},"application/vnd.ms-excel.sheet.binary.macroenabled.12":{"source":"iana","extensions":["xlsb"]},"application/vnd.ms-excel.sheet.macroenabled.12":{"source":"iana","extensions":["xlsm"]},"application/vnd.ms-excel.template.macroenabled.12":{"source":"iana","extensions":["xltm"]},"application/vnd.ms-fontobject":{"source":"iana","compressible":true,"extensions":["eot"]},"application/vnd.ms-htmlhelp":{"source":"iana","extensions":["chm"]},"application/vnd.ms-ims":{"source":"iana","extensions":["ims"]},"application/vnd.ms-lrm":{"source":"iana","extensions":["lrm"]},"application/vnd.ms-office.activex+xml":{"source":"iana","compressible":true},"application/vnd.ms-officetheme":{"source":"iana","extensions":["thmx"]},"application/vnd.ms-opentype":{"source":"apache","compressible":true},"application/vnd.ms-outlook":{"compressible":false,"extensions":["msg"]},"application/vnd.ms-package.obfuscated-opentype":{"source":"apache"},"application/vnd.ms-pki.seccat":{"source":"apache","extensions":["cat"]},"application/vnd.ms-pki.stl":{"source":"apache","extensions":["stl"]},"application/vnd.ms-playready.initiator+xml":{"source":"iana","compressible":true},"application/vnd.ms-powerpoint":{"source":"iana","compressible":false,"extensions":["ppt","pps","pot"]},"application/vnd.ms-powerpoint.addin.macroenabled.12":{"source":"iana","extensions":["ppam"]},"application/vnd.ms-powerpoint.presentation.macroenabled.12":{"source":"iana","extensions":["pptm"]},"application/vnd.ms-powerpoint.slide.macroenabled.12":{"source":"iana","extensions":["sldm"]},"application/vnd.ms-powerpoint.slideshow.macroenabled.12":{"source":"iana","extensions":["ppsm"]},"application/vnd.ms-powerpoint.template.macroenabled.12":{"source":"iana","extensions":["potm"]},"application/vnd.ms-printdevicecapabilities+xml":{"source":"iana","compressible":true},"application/vnd.ms-printing.printticket+xml":{"source":"apache","compressible":true},"application/vnd.ms-printschematicket+xml":{"source":"iana","compressible":true},"application/vnd.ms-project":{"source":"iana","extensions":["mpp","mpt"]},"application/vnd.ms-tnef":{"source":"iana"},"application/vnd.ms-windows.devicepairing":{"source":"iana"},"application/vnd.ms-windows.nwprinting.oob":{"source":"iana"},"application/vnd.ms-windows.printerpairing":{"source":"iana"},"application/vnd.ms-windows.wsd.oob":{"source":"iana"},"application/vnd.ms-wmdrm.lic-chlg-req":{"source":"iana"},"application/vnd.ms-wmdrm.lic-resp":{"source":"iana"},"application/vnd.ms-wmdrm.meter-chlg-req":{"source":"iana"},"application/vnd.ms-wmdrm.meter-resp":{"source":"iana"},"application/vnd.ms-word.document.macroenabled.12":{"source":"iana","extensions":["docm"]},"application/vnd.ms-word.template.macroenabled.12":{"source":"iana","extensions":["dotm"]},"application/vnd.ms-works":{"source":"iana","extensions":["wps","wks","wcm","wdb"]},"application/vnd.ms-wpl":{"source":"iana","extensions":["wpl"]},"application/vnd.ms-xpsdocument":{"source":"iana","compressible":false,"extensions":["xps"]},"application/vnd.msa-disk-image":{"source":"iana"},"application/vnd.mseq":{"source":"iana","extensions":["mseq"]},"application/vnd.msign":{"source":"iana"},"application/vnd.multiad.creator":{"source":"iana"},"application/vnd.multiad.creator.cif":{"source":"iana"},"application/vnd.music-niff":{"source":"iana"},"application/vnd.musician":{"source":"iana","extensions":["mus"]},"application/vnd.muvee.style":{"source":"iana","extensions":["msty"]},"application/vnd.mynfc":{"source":"iana","extensions":["taglet"]},"application/vnd.nacamar.ybrid+json":{"source":"iana","compressible":true},"application/vnd.ncd.control":{"source":"iana"},"application/vnd.ncd.reference":{"source":"iana"},"application/vnd.nearst.inv+json":{"source":"iana","compressible":true},"application/vnd.nebumind.line":{"source":"iana"},"application/vnd.nervana":{"source":"iana"},"application/vnd.netfpx":{"source":"iana"},"application/vnd.neurolanguage.nlu":{"source":"iana","extensions":["nlu"]},"application/vnd.nimn":{"source":"iana"},"application/vnd.nintendo.nitro.rom":{"source":"iana"},"application/vnd.nintendo.snes.rom":{"source":"iana"},"application/vnd.nitf":{"source":"iana","extensions":["ntf","nitf"]},"application/vnd.noblenet-directory":{"source":"iana","extensions":["nnd"]},"application/vnd.noblenet-sealer":{"source":"iana","extensions":["nns"]},"application/vnd.noblenet-web":{"source":"iana","extensions":["nnw"]},"application/vnd.nokia.catalogs":{"source":"iana"},"application/vnd.nokia.conml+wbxml":{"source":"iana"},"application/vnd.nokia.conml+xml":{"source":"iana","compressible":true},"application/vnd.nokia.iptv.config+xml":{"source":"iana","compressible":true},"application/vnd.nokia.isds-radio-presets":{"source":"iana"},"application/vnd.nokia.landmark+wbxml":{"source":"iana"},"application/vnd.nokia.landmark+xml":{"source":"iana","compressible":true},"application/vnd.nokia.landmarkcollection+xml":{"source":"iana","compressible":true},"application/vnd.nokia.n-gage.ac+xml":{"source":"iana","compressible":true,"extensions":["ac"]},"application/vnd.nokia.n-gage.data":{"source":"iana","extensions":["ngdat"]},"application/vnd.nokia.n-gage.symbian.install":{"source":"iana","extensions":["n-gage"]},"application/vnd.nokia.ncd":{"source":"iana"},"application/vnd.nokia.pcd+wbxml":{"source":"iana"},"application/vnd.nokia.pcd+xml":{"source":"iana","compressible":true},"application/vnd.nokia.radio-preset":{"source":"iana","extensions":["rpst"]},"application/vnd.nokia.radio-presets":{"source":"iana","extensions":["rpss"]},"application/vnd.novadigm.edm":{"source":"iana","extensions":["edm"]},"application/vnd.novadigm.edx":{"source":"iana","extensions":["edx"]},"application/vnd.novadigm.ext":{"source":"iana","extensions":["ext"]},"application/vnd.ntt-local.content-share":{"source":"iana"},"application/vnd.ntt-local.file-transfer":{"source":"iana"},"application/vnd.ntt-local.ogw_remote-access":{"source":"iana"},"application/vnd.ntt-local.sip-ta_remote":{"source":"iana"},"application/vnd.ntt-local.sip-ta_tcp_stream":{"source":"iana"},"application/vnd.oasis.opendocument.chart":{"source":"iana","extensions":["odc"]},"application/vnd.oasis.opendocument.chart-template":{"source":"iana","extensions":["otc"]},"application/vnd.oasis.opendocument.database":{"source":"iana","extensions":["odb"]},"application/vnd.oasis.opendocument.formula":{"source":"iana","extensions":["odf"]},"application/vnd.oasis.opendocument.formula-template":{"source":"iana","extensions":["odft"]},"application/vnd.oasis.opendocument.graphics":{"source":"iana","compressible":false,"extensions":["odg"]},"application/vnd.oasis.opendocument.graphics-template":{"source":"iana","extensions":["otg"]},"application/vnd.oasis.opendocument.image":{"source":"iana","extensions":["odi"]},"application/vnd.oasis.opendocument.image-template":{"source":"iana","extensions":["oti"]},"application/vnd.oasis.opendocument.presentation":{"source":"iana","compressible":false,"extensions":["odp"]},"application/vnd.oasis.opendocument.presentation-template":{"source":"iana","extensions":["otp"]},"application/vnd.oasis.opendocument.spreadsheet":{"source":"iana","compressible":false,"extensions":["ods"]},"application/vnd.oasis.opendocument.spreadsheet-template":{"source":"iana","extensions":["ots"]},"application/vnd.oasis.opendocument.text":{"source":"iana","compressible":false,"extensions":["odt"]},"application/vnd.oasis.opendocument.text-master":{"source":"iana","extensions":["odm"]},"application/vnd.oasis.opendocument.text-template":{"source":"iana","extensions":["ott"]},"application/vnd.oasis.opendocument.text-web":{"source":"iana","extensions":["oth"]},"application/vnd.obn":{"source":"iana"},"application/vnd.ocf+cbor":{"source":"iana"},"application/vnd.oci.image.manifest.v1+json":{"source":"iana","compressible":true},"application/vnd.oftn.l10n+json":{"source":"iana","compressible":true},"application/vnd.oipf.contentaccessdownload+xml":{"source":"iana","compressible":true},"application/vnd.oipf.contentaccessstreaming+xml":{"source":"iana","compressible":true},"application/vnd.oipf.cspg-hexbinary":{"source":"iana"},"application/vnd.oipf.dae.svg+xml":{"source":"iana","compressible":true},"application/vnd.oipf.dae.xhtml+xml":{"source":"iana","compressible":true},"application/vnd.oipf.mippvcontrolmessage+xml":{"source":"iana","compressible":true},"application/vnd.oipf.pae.gem":{"source":"iana"},"application/vnd.oipf.spdiscovery+xml":{"source":"iana","compressible":true},"application/vnd.oipf.spdlist+xml":{"source":"iana","compressible":true},"application/vnd.oipf.ueprofile+xml":{"source":"iana","compressible":true},"application/vnd.oipf.userprofile+xml":{"source":"iana","compressible":true},"application/vnd.olpc-sugar":{"source":"iana","extensions":["xo"]},"application/vnd.oma-scws-config":{"source":"iana"},"application/vnd.oma-scws-http-request":{"source":"iana"},"application/vnd.oma-scws-http-response":{"source":"iana"},"application/vnd.oma.bcast.associated-procedure-parameter+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.drm-trigger+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.imd+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.ltkm":{"source":"iana"},"application/vnd.oma.bcast.notification+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.provisioningtrigger":{"source":"iana"},"application/vnd.oma.bcast.sgboot":{"source":"iana"},"application/vnd.oma.bcast.sgdd+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.sgdu":{"source":"iana"},"application/vnd.oma.bcast.simple-symbol-container":{"source":"iana"},"application/vnd.oma.bcast.smartcard-trigger+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.sprov+xml":{"source":"iana","compressible":true},"application/vnd.oma.bcast.stkm":{"source":"iana"},"application/vnd.oma.cab-address-book+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-feature-handler+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-pcc+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-subs-invite+xml":{"source":"iana","compressible":true},"application/vnd.oma.cab-user-prefs+xml":{"source":"iana","compressible":true},"application/vnd.oma.dcd":{"source":"iana"},"application/vnd.oma.dcdc":{"source":"iana"},"application/vnd.oma.dd2+xml":{"source":"iana","compressible":true,"extensions":["dd2"]},"application/vnd.oma.drm.risd+xml":{"source":"iana","compressible":true},"application/vnd.oma.group-usage-list+xml":{"source":"iana","compressible":true},"application/vnd.oma.lwm2m+cbor":{"source":"iana"},"application/vnd.oma.lwm2m+json":{"source":"iana","compressible":true},"application/vnd.oma.lwm2m+tlv":{"source":"iana"},"application/vnd.oma.pal+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.detailed-progress-report+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.final-report+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.groups+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.invocation-descriptor+xml":{"source":"iana","compressible":true},"application/vnd.oma.poc.optimized-progress-report+xml":{"source":"iana","compressible":true},"application/vnd.oma.push":{"source":"iana"},"application/vnd.oma.scidm.messages+xml":{"source":"iana","compressible":true},"application/vnd.oma.xcap-directory+xml":{"source":"iana","compressible":true},"application/vnd.omads-email+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.omads-file+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.omads-folder+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.omaloc-supl-init":{"source":"iana"},"application/vnd.onepager":{"source":"iana"},"application/vnd.onepagertamp":{"source":"iana"},"application/vnd.onepagertamx":{"source":"iana"},"application/vnd.onepagertat":{"source":"iana"},"application/vnd.onepagertatp":{"source":"iana"},"application/vnd.onepagertatx":{"source":"iana"},"application/vnd.openblox.game+xml":{"source":"iana","compressible":true,"extensions":["obgx"]},"application/vnd.openblox.game-binary":{"source":"iana"},"application/vnd.openeye.oeb":{"source":"iana"},"application/vnd.openofficeorg.extension":{"source":"apache","extensions":["oxt"]},"application/vnd.openstreetmap.data+xml":{"source":"iana","compressible":true,"extensions":["osm"]},"application/vnd.opentimestamps.ots":{"source":"iana"},"application/vnd.openxmlformats-officedocument.custom-properties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.customxmlproperties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawing+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.chart+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.chartshapes+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramcolors+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramdata+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramlayout+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.drawingml.diagramstyle+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.extended-properties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.commentauthors+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.comments+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.handoutmaster+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.notesmaster+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.notesslide+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.presentation":{"source":"iana","compressible":false,"extensions":["pptx"]},"application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.presprops+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slide":{"source":"iana","extensions":["sldx"]},"application/vnd.openxmlformats-officedocument.presentationml.slide+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slidelayout+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slidemaster+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slideshow":{"source":"iana","extensions":["ppsx"]},"application/vnd.openxmlformats-officedocument.presentationml.slideshow.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.slideupdateinfo+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.tablestyles+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.tags+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.template":{"source":"iana","extensions":["potx"]},"application/vnd.openxmlformats-officedocument.presentationml.template.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.presentationml.viewprops+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.calcchain+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.chartsheet+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.connections+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.dialogsheet+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.externallink+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotcachedefinition+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.pivotcacherecords+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.pivottable+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.querytable+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.revisionheaders+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.revisionlog+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedstrings+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":{"source":"iana","compressible":false,"extensions":["xlsx"]},"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.sheetmetadata+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.tablesinglecells+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.template":{"source":"iana","extensions":["xltx"]},"application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.usernames+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.volatiledependencies+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.theme+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.themeoverride+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.vmldrawing":{"source":"iana"},"application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.document":{"source":"iana","compressible":false,"extensions":["docx"]},"application/vnd.openxmlformats-officedocument.wordprocessingml.document.glossary+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.fonttable+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.template":{"source":"iana","extensions":["dotx"]},"application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-officedocument.wordprocessingml.websettings+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-package.core-properties+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-package.digital-signature-xmlsignature+xml":{"source":"iana","compressible":true},"application/vnd.openxmlformats-package.relationships+xml":{"source":"iana","compressible":true},"application/vnd.oracle.resource+json":{"source":"iana","compressible":true},"application/vnd.orange.indata":{"source":"iana"},"application/vnd.osa.netdeploy":{"source":"iana"},"application/vnd.osgeo.mapguide.package":{"source":"iana","extensions":["mgp"]},"application/vnd.osgi.bundle":{"source":"iana"},"application/vnd.osgi.dp":{"source":"iana","extensions":["dp"]},"application/vnd.osgi.subsystem":{"source":"iana","extensions":["esa"]},"application/vnd.otps.ct-kip+xml":{"source":"iana","compressible":true},"application/vnd.oxli.countgraph":{"source":"iana"},"application/vnd.pagerduty+json":{"source":"iana","compressible":true},"application/vnd.palm":{"source":"iana","extensions":["pdb","pqa","oprc"]},"application/vnd.panoply":{"source":"iana"},"application/vnd.paos.xml":{"source":"iana"},"application/vnd.patentdive":{"source":"iana"},"application/vnd.patientecommsdoc":{"source":"iana"},"application/vnd.pawaafile":{"source":"iana","extensions":["paw"]},"application/vnd.pcos":{"source":"iana"},"application/vnd.pg.format":{"source":"iana","extensions":["str"]},"application/vnd.pg.osasli":{"source":"iana","extensions":["ei6"]},"application/vnd.piaccess.application-licence":{"source":"iana"},"application/vnd.picsel":{"source":"iana","extensions":["efif"]},"application/vnd.pmi.widget":{"source":"iana","extensions":["wg"]},"application/vnd.poc.group-advertisement+xml":{"source":"iana","compressible":true},"application/vnd.pocketlearn":{"source":"iana","extensions":["plf"]},"application/vnd.powerbuilder6":{"source":"iana","extensions":["pbd"]},"application/vnd.powerbuilder6-s":{"source":"iana"},"application/vnd.powerbuilder7":{"source":"iana"},"application/vnd.powerbuilder7-s":{"source":"iana"},"application/vnd.powerbuilder75":{"source":"iana"},"application/vnd.powerbuilder75-s":{"source":"iana"},"application/vnd.preminet":{"source":"iana"},"application/vnd.previewsystems.box":{"source":"iana","extensions":["box"]},"application/vnd.proteus.magazine":{"source":"iana","extensions":["mgz"]},"application/vnd.psfs":{"source":"iana"},"application/vnd.publishare-delta-tree":{"source":"iana","extensions":["qps"]},"application/vnd.pvi.ptid1":{"source":"iana","extensions":["ptid"]},"application/vnd.pwg-multiplexed":{"source":"iana"},"application/vnd.pwg-xhtml-print+xml":{"source":"iana","compressible":true},"application/vnd.qualcomm.brew-app-res":{"source":"iana"},"application/vnd.quarantainenet":{"source":"iana"},"application/vnd.quark.quarkxpress":{"source":"iana","extensions":["qxd","qxt","qwd","qwt","qxl","qxb"]},"application/vnd.quobject-quoxdocument":{"source":"iana"},"application/vnd.radisys.moml+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-conf+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-conn+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-dialog+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-audit-stream+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-conf+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-base+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-fax-detect+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-fax-sendrecv+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-group+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-speech+xml":{"source":"iana","compressible":true},"application/vnd.radisys.msml-dialog-transform+xml":{"source":"iana","compressible":true},"application/vnd.rainstor.data":{"source":"iana"},"application/vnd.rapid":{"source":"iana"},"application/vnd.rar":{"source":"iana","extensions":["rar"]},"application/vnd.realvnc.bed":{"source":"iana","extensions":["bed"]},"application/vnd.recordare.musicxml":{"source":"iana","extensions":["mxl"]},"application/vnd.recordare.musicxml+xml":{"source":"iana","compressible":true,"extensions":["musicxml"]},"application/vnd.renlearn.rlprint":{"source":"iana"},"application/vnd.resilient.logic":{"source":"iana"},"application/vnd.restful+json":{"source":"iana","compressible":true},"application/vnd.rig.cryptonote":{"source":"iana","extensions":["cryptonote"]},"application/vnd.rim.cod":{"source":"apache","extensions":["cod"]},"application/vnd.rn-realmedia":{"source":"apache","extensions":["rm"]},"application/vnd.rn-realmedia-vbr":{"source":"apache","extensions":["rmvb"]},"application/vnd.route66.link66+xml":{"source":"iana","compressible":true,"extensions":["link66"]},"application/vnd.rs-274x":{"source":"iana"},"application/vnd.ruckus.download":{"source":"iana"},"application/vnd.s3sms":{"source":"iana"},"application/vnd.sailingtracker.track":{"source":"iana","extensions":["st"]},"application/vnd.sar":{"source":"iana"},"application/vnd.sbm.cid":{"source":"iana"},"application/vnd.sbm.mid2":{"source":"iana"},"application/vnd.scribus":{"source":"iana"},"application/vnd.sealed.3df":{"source":"iana"},"application/vnd.sealed.csf":{"source":"iana"},"application/vnd.sealed.doc":{"source":"iana"},"application/vnd.sealed.eml":{"source":"iana"},"application/vnd.sealed.mht":{"source":"iana"},"application/vnd.sealed.net":{"source":"iana"},"application/vnd.sealed.ppt":{"source":"iana"},"application/vnd.sealed.tiff":{"source":"iana"},"application/vnd.sealed.xls":{"source":"iana"},"application/vnd.sealedmedia.softseal.html":{"source":"iana"},"application/vnd.sealedmedia.softseal.pdf":{"source":"iana"},"application/vnd.seemail":{"source":"iana","extensions":["see"]},"application/vnd.seis+json":{"source":"iana","compressible":true},"application/vnd.sema":{"source":"iana","extensions":["sema"]},"application/vnd.semd":{"source":"iana","extensions":["semd"]},"application/vnd.semf":{"source":"iana","extensions":["semf"]},"application/vnd.shade-save-file":{"source":"iana"},"application/vnd.shana.informed.formdata":{"source":"iana","extensions":["ifm"]},"application/vnd.shana.informed.formtemplate":{"source":"iana","extensions":["itp"]},"application/vnd.shana.informed.interchange":{"source":"iana","extensions":["iif"]},"application/vnd.shana.informed.package":{"source":"iana","extensions":["ipk"]},"application/vnd.shootproof+json":{"source":"iana","compressible":true},"application/vnd.shopkick+json":{"source":"iana","compressible":true},"application/vnd.shp":{"source":"iana"},"application/vnd.shx":{"source":"iana"},"application/vnd.sigrok.session":{"source":"iana"},"application/vnd.simtech-mindmapper":{"source":"iana","extensions":["twd","twds"]},"application/vnd.siren+json":{"source":"iana","compressible":true},"application/vnd.smaf":{"source":"iana","extensions":["mmf"]},"application/vnd.smart.notebook":{"source":"iana"},"application/vnd.smart.teacher":{"source":"iana","extensions":["teacher"]},"application/vnd.snesdev-page-table":{"source":"iana"},"application/vnd.software602.filler.form+xml":{"source":"iana","compressible":true,"extensions":["fo"]},"application/vnd.software602.filler.form-xml-zip":{"source":"iana"},"application/vnd.solent.sdkm+xml":{"source":"iana","compressible":true,"extensions":["sdkm","sdkd"]},"application/vnd.spotfire.dxp":{"source":"iana","extensions":["dxp"]},"application/vnd.spotfire.sfs":{"source":"iana","extensions":["sfs"]},"application/vnd.sqlite3":{"source":"iana"},"application/vnd.sss-cod":{"source":"iana"},"application/vnd.sss-dtf":{"source":"iana"},"application/vnd.sss-ntf":{"source":"iana"},"application/vnd.stardivision.calc":{"source":"apache","extensions":["sdc"]},"application/vnd.stardivision.draw":{"source":"apache","extensions":["sda"]},"application/vnd.stardivision.impress":{"source":"apache","extensions":["sdd"]},"application/vnd.stardivision.math":{"source":"apache","extensions":["smf"]},"application/vnd.stardivision.writer":{"source":"apache","extensions":["sdw","vor"]},"application/vnd.stardivision.writer-global":{"source":"apache","extensions":["sgl"]},"application/vnd.stepmania.package":{"source":"iana","extensions":["smzip"]},"application/vnd.stepmania.stepchart":{"source":"iana","extensions":["sm"]},"application/vnd.street-stream":{"source":"iana"},"application/vnd.sun.wadl+xml":{"source":"iana","compressible":true,"extensions":["wadl"]},"application/vnd.sun.xml.calc":{"source":"apache","extensions":["sxc"]},"application/vnd.sun.xml.calc.template":{"source":"apache","extensions":["stc"]},"application/vnd.sun.xml.draw":{"source":"apache","extensions":["sxd"]},"application/vnd.sun.xml.draw.template":{"source":"apache","extensions":["std"]},"application/vnd.sun.xml.impress":{"source":"apache","extensions":["sxi"]},"application/vnd.sun.xml.impress.template":{"source":"apache","extensions":["sti"]},"application/vnd.sun.xml.math":{"source":"apache","extensions":["sxm"]},"application/vnd.sun.xml.writer":{"source":"apache","extensions":["sxw"]},"application/vnd.sun.xml.writer.global":{"source":"apache","extensions":["sxg"]},"application/vnd.sun.xml.writer.template":{"source":"apache","extensions":["stw"]},"application/vnd.sus-calendar":{"source":"iana","extensions":["sus","susp"]},"application/vnd.svd":{"source":"iana","extensions":["svd"]},"application/vnd.swiftview-ics":{"source":"iana"},"application/vnd.sycle+xml":{"source":"iana","compressible":true},"application/vnd.syft+json":{"source":"iana","compressible":true},"application/vnd.symbian.install":{"source":"apache","extensions":["sis","sisx"]},"application/vnd.syncml+xml":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["xsm"]},"application/vnd.syncml.dm+wbxml":{"source":"iana","charset":"UTF-8","extensions":["bdm"]},"application/vnd.syncml.dm+xml":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["xdm"]},"application/vnd.syncml.dm.notification":{"source":"iana"},"application/vnd.syncml.dmddf+wbxml":{"source":"iana"},"application/vnd.syncml.dmddf+xml":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["ddf"]},"application/vnd.syncml.dmtnds+wbxml":{"source":"iana"},"application/vnd.syncml.dmtnds+xml":{"source":"iana","charset":"UTF-8","compressible":true},"application/vnd.syncml.ds.notification":{"source":"iana"},"application/vnd.tableschema+json":{"source":"iana","compressible":true},"application/vnd.tao.intent-module-archive":{"source":"iana","extensions":["tao"]},"application/vnd.tcpdump.pcap":{"source":"iana","extensions":["pcap","cap","dmp"]},"application/vnd.think-cell.ppttc+json":{"source":"iana","compressible":true},"application/vnd.tmd.mediaflex.api+xml":{"source":"iana","compressible":true},"application/vnd.tml":{"source":"iana"},"application/vnd.tmobile-livetv":{"source":"iana","extensions":["tmo"]},"application/vnd.tri.onesource":{"source":"iana"},"application/vnd.trid.tpt":{"source":"iana","extensions":["tpt"]},"application/vnd.triscape.mxs":{"source":"iana","extensions":["mxs"]},"application/vnd.trueapp":{"source":"iana","extensions":["tra"]},"application/vnd.truedoc":{"source":"iana"},"application/vnd.ubisoft.webplayer":{"source":"iana"},"application/vnd.ufdl":{"source":"iana","extensions":["ufd","ufdl"]},"application/vnd.uiq.theme":{"source":"iana","extensions":["utz"]},"application/vnd.umajin":{"source":"iana","extensions":["umj"]},"application/vnd.unity":{"source":"iana","extensions":["unityweb"]},"application/vnd.uoml+xml":{"source":"iana","compressible":true,"extensions":["uoml"]},"application/vnd.uplanet.alert":{"source":"iana"},"application/vnd.uplanet.alert-wbxml":{"source":"iana"},"application/vnd.uplanet.bearer-choice":{"source":"iana"},"application/vnd.uplanet.bearer-choice-wbxml":{"source":"iana"},"application/vnd.uplanet.cacheop":{"source":"iana"},"application/vnd.uplanet.cacheop-wbxml":{"source":"iana"},"application/vnd.uplanet.channel":{"source":"iana"},"application/vnd.uplanet.channel-wbxml":{"source":"iana"},"application/vnd.uplanet.list":{"source":"iana"},"application/vnd.uplanet.list-wbxml":{"source":"iana"},"application/vnd.uplanet.listcmd":{"source":"iana"},"application/vnd.uplanet.listcmd-wbxml":{"source":"iana"},"application/vnd.uplanet.signal":{"source":"iana"},"application/vnd.uri-map":{"source":"iana"},"application/vnd.valve.source.material":{"source":"iana"},"application/vnd.vcx":{"source":"iana","extensions":["vcx"]},"application/vnd.vd-study":{"source":"iana"},"application/vnd.vectorworks":{"source":"iana"},"application/vnd.vel+json":{"source":"iana","compressible":true},"application/vnd.verimatrix.vcas":{"source":"iana"},"application/vnd.veritone.aion+json":{"source":"iana","compressible":true},"application/vnd.veryant.thin":{"source":"iana"},"application/vnd.ves.encrypted":{"source":"iana"},"application/vnd.vidsoft.vidconference":{"source":"iana"},"application/vnd.visio":{"source":"iana","extensions":["vsd","vst","vss","vsw"]},"application/vnd.visionary":{"source":"iana","extensions":["vis"]},"application/vnd.vividence.scriptfile":{"source":"iana"},"application/vnd.vsf":{"source":"iana","extensions":["vsf"]},"application/vnd.wap.sic":{"source":"iana"},"application/vnd.wap.slc":{"source":"iana"},"application/vnd.wap.wbxml":{"source":"iana","charset":"UTF-8","extensions":["wbxml"]},"application/vnd.wap.wmlc":{"source":"iana","extensions":["wmlc"]},"application/vnd.wap.wmlscriptc":{"source":"iana","extensions":["wmlsc"]},"application/vnd.webturbo":{"source":"iana","extensions":["wtb"]},"application/vnd.wfa.dpp":{"source":"iana"},"application/vnd.wfa.p2p":{"source":"iana"},"application/vnd.wfa.wsc":{"source":"iana"},"application/vnd.windows.devicepairing":{"source":"iana"},"application/vnd.wmc":{"source":"iana"},"application/vnd.wmf.bootstrap":{"source":"iana"},"application/vnd.wolfram.mathematica":{"source":"iana"},"application/vnd.wolfram.mathematica.package":{"source":"iana"},"application/vnd.wolfram.player":{"source":"iana","extensions":["nbp"]},"application/vnd.wordperfect":{"source":"iana","extensions":["wpd"]},"application/vnd.wqd":{"source":"iana","extensions":["wqd"]},"application/vnd.wrq-hp3000-labelled":{"source":"iana"},"application/vnd.wt.stf":{"source":"iana","extensions":["stf"]},"application/vnd.wv.csp+wbxml":{"source":"iana"},"application/vnd.wv.csp+xml":{"source":"iana","compressible":true},"application/vnd.wv.ssp+xml":{"source":"iana","compressible":true},"application/vnd.xacml+json":{"source":"iana","compressible":true},"application/vnd.xara":{"source":"iana","extensions":["xar"]},"application/vnd.xfdl":{"source":"iana","extensions":["xfdl"]},"application/vnd.xfdl.webform":{"source":"iana"},"application/vnd.xmi+xml":{"source":"iana","compressible":true},"application/vnd.xmpie.cpkg":{"source":"iana"},"application/vnd.xmpie.dpkg":{"source":"iana"},"application/vnd.xmpie.plan":{"source":"iana"},"application/vnd.xmpie.ppkg":{"source":"iana"},"application/vnd.xmpie.xlim":{"source":"iana"},"application/vnd.yamaha.hv-dic":{"source":"iana","extensions":["hvd"]},"application/vnd.yamaha.hv-script":{"source":"iana","extensions":["hvs"]},"application/vnd.yamaha.hv-voice":{"source":"iana","extensions":["hvp"]},"application/vnd.yamaha.openscoreformat":{"source":"iana","extensions":["osf"]},"application/vnd.yamaha.openscoreformat.osfpvg+xml":{"source":"iana","compressible":true,"extensions":["osfpvg"]},"application/vnd.yamaha.remote-setup":{"source":"iana"},"application/vnd.yamaha.smaf-audio":{"source":"iana","extensions":["saf"]},"application/vnd.yamaha.smaf-phrase":{"source":"iana","extensions":["spf"]},"application/vnd.yamaha.through-ngn":{"source":"iana"},"application/vnd.yamaha.tunnel-udpencap":{"source":"iana"},"application/vnd.yaoweme":{"source":"iana"},"application/vnd.yellowriver-custom-menu":{"source":"iana","extensions":["cmp"]},"application/vnd.youtube.yt":{"source":"iana"},"application/vnd.zul":{"source":"iana","extensions":["zir","zirz"]},"application/vnd.zzazz.deck+xml":{"source":"iana","compressible":true,"extensions":["zaz"]},"application/voicexml+xml":{"source":"iana","compressible":true,"extensions":["vxml"]},"application/voucher-cms+json":{"source":"iana","compressible":true},"application/vq-rtcpxr":{"source":"iana"},"application/wasm":{"source":"iana","compressible":true,"extensions":["wasm"]},"application/watcherinfo+xml":{"source":"iana","compressible":true,"extensions":["wif"]},"application/webpush-options+json":{"source":"iana","compressible":true},"application/whoispp-query":{"source":"iana"},"application/whoispp-response":{"source":"iana"},"application/widget":{"source":"iana","extensions":["wgt"]},"application/winhlp":{"source":"apache","extensions":["hlp"]},"application/wita":{"source":"iana"},"application/wordperfect5.1":{"source":"iana"},"application/wsdl+xml":{"source":"iana","compressible":true,"extensions":["wsdl"]},"application/wspolicy+xml":{"source":"iana","compressible":true,"extensions":["wspolicy"]},"application/x-7z-compressed":{"source":"apache","compressible":false,"extensions":["7z"]},"application/x-abiword":{"source":"apache","extensions":["abw"]},"application/x-ace-compressed":{"source":"apache","extensions":["ace"]},"application/x-amf":{"source":"apache"},"application/x-apple-diskimage":{"source":"apache","extensions":["dmg"]},"application/x-arj":{"compressible":false,"extensions":["arj"]},"application/x-authorware-bin":{"source":"apache","extensions":["aab","x32","u32","vox"]},"application/x-authorware-map":{"source":"apache","extensions":["aam"]},"application/x-authorware-seg":{"source":"apache","extensions":["aas"]},"application/x-bcpio":{"source":"apache","extensions":["bcpio"]},"application/x-bdoc":{"compressible":false,"extensions":["bdoc"]},"application/x-bittorrent":{"source":"apache","extensions":["torrent"]},"application/x-blorb":{"source":"apache","extensions":["blb","blorb"]},"application/x-bzip":{"source":"apache","compressible":false,"extensions":["bz"]},"application/x-bzip2":{"source":"apache","compressible":false,"extensions":["bz2","boz"]},"application/x-cbr":{"source":"apache","extensions":["cbr","cba","cbt","cbz","cb7"]},"application/x-cdlink":{"source":"apache","extensions":["vcd"]},"application/x-cfs-compressed":{"source":"apache","extensions":["cfs"]},"application/x-chat":{"source":"apache","extensions":["chat"]},"application/x-chess-pgn":{"source":"apache","extensions":["pgn"]},"application/x-chrome-extension":{"extensions":["crx"]},"application/x-cocoa":{"source":"nginx","extensions":["cco"]},"application/x-compress":{"source":"apache"},"application/x-conference":{"source":"apache","extensions":["nsc"]},"application/x-cpio":{"source":"apache","extensions":["cpio"]},"application/x-csh":{"source":"apache","extensions":["csh"]},"application/x-deb":{"compressible":false},"application/x-debian-package":{"source":"apache","extensions":["deb","udeb"]},"application/x-dgc-compressed":{"source":"apache","extensions":["dgc"]},"application/x-director":{"source":"apache","extensions":["dir","dcr","dxr","cst","cct","cxt","w3d","fgd","swa"]},"application/x-doom":{"source":"apache","extensions":["wad"]},"application/x-dtbncx+xml":{"source":"apache","compressible":true,"extensions":["ncx"]},"application/x-dtbook+xml":{"source":"apache","compressible":true,"extensions":["dtb"]},"application/x-dtbresource+xml":{"source":"apache","compressible":true,"extensions":["res"]},"application/x-dvi":{"source":"apache","compressible":false,"extensions":["dvi"]},"application/x-envoy":{"source":"apache","extensions":["evy"]},"application/x-eva":{"source":"apache","extensions":["eva"]},"application/x-font-bdf":{"source":"apache","extensions":["bdf"]},"application/x-font-dos":{"source":"apache"},"application/x-font-framemaker":{"source":"apache"},"application/x-font-ghostscript":{"source":"apache","extensions":["gsf"]},"application/x-font-libgrx":{"source":"apache"},"application/x-font-linux-psf":{"source":"apache","extensions":["psf"]},"application/x-font-pcf":{"source":"apache","extensions":["pcf"]},"application/x-font-snf":{"source":"apache","extensions":["snf"]},"application/x-font-speedo":{"source":"apache"},"application/x-font-sunos-news":{"source":"apache"},"application/x-font-type1":{"source":"apache","extensions":["pfa","pfb","pfm","afm"]},"application/x-font-vfont":{"source":"apache"},"application/x-freearc":{"source":"apache","extensions":["arc"]},"application/x-futuresplash":{"source":"apache","extensions":["spl"]},"application/x-gca-compressed":{"source":"apache","extensions":["gca"]},"application/x-glulx":{"source":"apache","extensions":["ulx"]},"application/x-gnumeric":{"source":"apache","extensions":["gnumeric"]},"application/x-gramps-xml":{"source":"apache","extensions":["gramps"]},"application/x-gtar":{"source":"apache","extensions":["gtar"]},"application/x-gzip":{"source":"apache"},"application/x-hdf":{"source":"apache","extensions":["hdf"]},"application/x-httpd-php":{"compressible":true,"extensions":["php"]},"application/x-install-instructions":{"source":"apache","extensions":["install"]},"application/x-iso9660-image":{"source":"apache","extensions":["iso"]},"application/x-iwork-keynote-sffkey":{"extensions":["key"]},"application/x-iwork-numbers-sffnumbers":{"extensions":["numbers"]},"application/x-iwork-pages-sffpages":{"extensions":["pages"]},"application/x-java-archive-diff":{"source":"nginx","extensions":["jardiff"]},"application/x-java-jnlp-file":{"source":"apache","compressible":false,"extensions":["jnlp"]},"application/x-javascript":{"compressible":true},"application/x-keepass2":{"extensions":["kdbx"]},"application/x-latex":{"source":"apache","compressible":false,"extensions":["latex"]},"application/x-lua-bytecode":{"extensions":["luac"]},"application/x-lzh-compressed":{"source":"apache","extensions":["lzh","lha"]},"application/x-makeself":{"source":"nginx","extensions":["run"]},"application/x-mie":{"source":"apache","extensions":["mie"]},"application/x-mobipocket-ebook":{"source":"apache","extensions":["prc","mobi"]},"application/x-mpegurl":{"compressible":false},"application/x-ms-application":{"source":"apache","extensions":["application"]},"application/x-ms-shortcut":{"source":"apache","extensions":["lnk"]},"application/x-ms-wmd":{"source":"apache","extensions":["wmd"]},"application/x-ms-wmz":{"source":"apache","extensions":["wmz"]},"application/x-ms-xbap":{"source":"apache","extensions":["xbap"]},"application/x-msaccess":{"source":"apache","extensions":["mdb"]},"application/x-msbinder":{"source":"apache","extensions":["obd"]},"application/x-mscardfile":{"source":"apache","extensions":["crd"]},"application/x-msclip":{"source":"apache","extensions":["clp"]},"application/x-msdos-program":{"extensions":["exe"]},"application/x-msdownload":{"source":"apache","extensions":["exe","dll","com","bat","msi"]},"application/x-msmediaview":{"source":"apache","extensions":["mvb","m13","m14"]},"application/x-msmetafile":{"source":"apache","extensions":["wmf","wmz","emf","emz"]},"application/x-msmoney":{"source":"apache","extensions":["mny"]},"application/x-mspublisher":{"source":"apache","extensions":["pub"]},"application/x-msschedule":{"source":"apache","extensions":["scd"]},"application/x-msterminal":{"source":"apache","extensions":["trm"]},"application/x-mswrite":{"source":"apache","extensions":["wri"]},"application/x-netcdf":{"source":"apache","extensions":["nc","cdf"]},"application/x-ns-proxy-autoconfig":{"compressible":true,"extensions":["pac"]},"application/x-nzb":{"source":"apache","extensions":["nzb"]},"application/x-perl":{"source":"nginx","extensions":["pl","pm"]},"application/x-pilot":{"source":"nginx","extensions":["prc","pdb"]},"application/x-pkcs12":{"source":"apache","compressible":false,"extensions":["p12","pfx"]},"application/x-pkcs7-certificates":{"source":"apache","extensions":["p7b","spc"]},"application/x-pkcs7-certreqresp":{"source":"apache","extensions":["p7r"]},"application/x-pki-message":{"source":"iana"},"application/x-rar-compressed":{"source":"apache","compressible":false,"extensions":["rar"]},"application/x-redhat-package-manager":{"source":"nginx","extensions":["rpm"]},"application/x-research-info-systems":{"source":"apache","extensions":["ris"]},"application/x-sea":{"source":"nginx","extensions":["sea"]},"application/x-sh":{"source":"apache","compressible":true,"extensions":["sh"]},"application/x-shar":{"source":"apache","extensions":["shar"]},"application/x-shockwave-flash":{"source":"apache","compressible":false,"extensions":["swf"]},"application/x-silverlight-app":{"source":"apache","extensions":["xap"]},"application/x-sql":{"source":"apache","extensions":["sql"]},"application/x-stuffit":{"source":"apache","compressible":false,"extensions":["sit"]},"application/x-stuffitx":{"source":"apache","extensions":["sitx"]},"application/x-subrip":{"source":"apache","extensions":["srt"]},"application/x-sv4cpio":{"source":"apache","extensions":["sv4cpio"]},"application/x-sv4crc":{"source":"apache","extensions":["sv4crc"]},"application/x-t3vm-image":{"source":"apache","extensions":["t3"]},"application/x-tads":{"source":"apache","extensions":["gam"]},"application/x-tar":{"source":"apache","compressible":true,"extensions":["tar"]},"application/x-tcl":{"source":"apache","extensions":["tcl","tk"]},"application/x-tex":{"source":"apache","extensions":["tex"]},"application/x-tex-tfm":{"source":"apache","extensions":["tfm"]},"application/x-texinfo":{"source":"apache","extensions":["texinfo","texi"]},"application/x-tgif":{"source":"apache","extensions":["obj"]},"application/x-ustar":{"source":"apache","extensions":["ustar"]},"application/x-virtualbox-hdd":{"compressible":true,"extensions":["hdd"]},"application/x-virtualbox-ova":{"compressible":true,"extensions":["ova"]},"application/x-virtualbox-ovf":{"compressible":true,"extensions":["ovf"]},"application/x-virtualbox-vbox":{"compressible":true,"extensions":["vbox"]},"application/x-virtualbox-vbox-extpack":{"compressible":false,"extensions":["vbox-extpack"]},"application/x-virtualbox-vdi":{"compressible":true,"extensions":["vdi"]},"application/x-virtualbox-vhd":{"compressible":true,"extensions":["vhd"]},"application/x-virtualbox-vmdk":{"compressible":true,"extensions":["vmdk"]},"application/x-wais-source":{"source":"apache","extensions":["src"]},"application/x-web-app-manifest+json":{"compressible":true,"extensions":["webapp"]},"application/x-www-form-urlencoded":{"source":"iana","compressible":true},"application/x-x509-ca-cert":{"source":"iana","extensions":["der","crt","pem"]},"application/x-x509-ca-ra-cert":{"source":"iana"},"application/x-x509-next-ca-cert":{"source":"iana"},"application/x-xfig":{"source":"apache","extensions":["fig"]},"application/x-xliff+xml":{"source":"apache","compressible":true,"extensions":["xlf"]},"application/x-xpinstall":{"source":"apache","compressible":false,"extensions":["xpi"]},"application/x-xz":{"source":"apache","extensions":["xz"]},"application/x-zmachine":{"source":"apache","extensions":["z1","z2","z3","z4","z5","z6","z7","z8"]},"application/x400-bp":{"source":"iana"},"application/xacml+xml":{"source":"iana","compressible":true},"application/xaml+xml":{"source":"apache","compressible":true,"extensions":["xaml"]},"application/xcap-att+xml":{"source":"iana","compressible":true,"extensions":["xav"]},"application/xcap-caps+xml":{"source":"iana","compressible":true,"extensions":["xca"]},"application/xcap-diff+xml":{"source":"iana","compressible":true,"extensions":["xdf"]},"application/xcap-el+xml":{"source":"iana","compressible":true,"extensions":["xel"]},"application/xcap-error+xml":{"source":"iana","compressible":true},"application/xcap-ns+xml":{"source":"iana","compressible":true,"extensions":["xns"]},"application/xcon-conference-info+xml":{"source":"iana","compressible":true},"application/xcon-conference-info-diff+xml":{"source":"iana","compressible":true},"application/xenc+xml":{"source":"iana","compressible":true,"extensions":["xenc"]},"application/xhtml+xml":{"source":"iana","compressible":true,"extensions":["xhtml","xht"]},"application/xhtml-voice+xml":{"source":"apache","compressible":true},"application/xliff+xml":{"source":"iana","compressible":true,"extensions":["xlf"]},"application/xml":{"source":"iana","compressible":true,"extensions":["xml","xsl","xsd","rng"]},"application/xml-dtd":{"source":"iana","compressible":true,"extensions":["dtd"]},"application/xml-external-parsed-entity":{"source":"iana"},"application/xml-patch+xml":{"source":"iana","compressible":true},"application/xmpp+xml":{"source":"iana","compressible":true},"application/xop+xml":{"source":"iana","compressible":true,"extensions":["xop"]},"application/xproc+xml":{"source":"apache","compressible":true,"extensions":["xpl"]},"application/xslt+xml":{"source":"iana","compressible":true,"extensions":["xsl","xslt"]},"application/xspf+xml":{"source":"apache","compressible":true,"extensions":["xspf"]},"application/xv+xml":{"source":"iana","compressible":true,"extensions":["mxml","xhvml","xvml","xvm"]},"application/yang":{"source":"iana","extensions":["yang"]},"application/yang-data+json":{"source":"iana","compressible":true},"application/yang-data+xml":{"source":"iana","compressible":true},"application/yang-patch+json":{"source":"iana","compressible":true},"application/yang-patch+xml":{"source":"iana","compressible":true},"application/yin+xml":{"source":"iana","compressible":true,"extensions":["yin"]},"application/zip":{"source":"iana","compressible":false,"extensions":["zip"]},"application/zlib":{"source":"iana"},"application/zstd":{"source":"iana"},"audio/1d-interleaved-parityfec":{"source":"iana"},"audio/32kadpcm":{"source":"iana"},"audio/3gpp":{"source":"iana","compressible":false,"extensions":["3gpp"]},"audio/3gpp2":{"source":"iana"},"audio/aac":{"source":"iana"},"audio/ac3":{"source":"iana"},"audio/adpcm":{"source":"apache","extensions":["adp"]},"audio/amr":{"source":"iana","extensions":["amr"]},"audio/amr-wb":{"source":"iana"},"audio/amr-wb+":{"source":"iana"},"audio/aptx":{"source":"iana"},"audio/asc":{"source":"iana"},"audio/atrac-advanced-lossless":{"source":"iana"},"audio/atrac-x":{"source":"iana"},"audio/atrac3":{"source":"iana"},"audio/basic":{"source":"iana","compressible":false,"extensions":["au","snd"]},"audio/bv16":{"source":"iana"},"audio/bv32":{"source":"iana"},"audio/clearmode":{"source":"iana"},"audio/cn":{"source":"iana"},"audio/dat12":{"source":"iana"},"audio/dls":{"source":"iana"},"audio/dsr-es201108":{"source":"iana"},"audio/dsr-es202050":{"source":"iana"},"audio/dsr-es202211":{"source":"iana"},"audio/dsr-es202212":{"source":"iana"},"audio/dv":{"source":"iana"},"audio/dvi4":{"source":"iana"},"audio/eac3":{"source":"iana"},"audio/encaprtp":{"source":"iana"},"audio/evrc":{"source":"iana"},"audio/evrc-qcp":{"source":"iana"},"audio/evrc0":{"source":"iana"},"audio/evrc1":{"source":"iana"},"audio/evrcb":{"source":"iana"},"audio/evrcb0":{"source":"iana"},"audio/evrcb1":{"source":"iana"},"audio/evrcnw":{"source":"iana"},"audio/evrcnw0":{"source":"iana"},"audio/evrcnw1":{"source":"iana"},"audio/evrcwb":{"source":"iana"},"audio/evrcwb0":{"source":"iana"},"audio/evrcwb1":{"source":"iana"},"audio/evs":{"source":"iana"},"audio/flexfec":{"source":"iana"},"audio/fwdred":{"source":"iana"},"audio/g711-0":{"source":"iana"},"audio/g719":{"source":"iana"},"audio/g722":{"source":"iana"},"audio/g7221":{"source":"iana"},"audio/g723":{"source":"iana"},"audio/g726-16":{"source":"iana"},"audio/g726-24":{"source":"iana"},"audio/g726-32":{"source":"iana"},"audio/g726-40":{"source":"iana"},"audio/g728":{"source":"iana"},"audio/g729":{"source":"iana"},"audio/g7291":{"source":"iana"},"audio/g729d":{"source":"iana"},"audio/g729e":{"source":"iana"},"audio/gsm":{"source":"iana"},"audio/gsm-efr":{"source":"iana"},"audio/gsm-hr-08":{"source":"iana"},"audio/ilbc":{"source":"iana"},"audio/ip-mr_v2.5":{"source":"iana"},"audio/isac":{"source":"apache"},"audio/l16":{"source":"iana"},"audio/l20":{"source":"iana"},"audio/l24":{"source":"iana","compressible":false},"audio/l8":{"source":"iana"},"audio/lpc":{"source":"iana"},"audio/melp":{"source":"iana"},"audio/melp1200":{"source":"iana"},"audio/melp2400":{"source":"iana"},"audio/melp600":{"source":"iana"},"audio/mhas":{"source":"iana"},"audio/midi":{"source":"apache","extensions":["mid","midi","kar","rmi"]},"audio/mobile-xmf":{"source":"iana","extensions":["mxmf"]},"audio/mp3":{"compressible":false,"extensions":["mp3"]},"audio/mp4":{"source":"iana","compressible":false,"extensions":["m4a","mp4a"]},"audio/mp4a-latm":{"source":"iana"},"audio/mpa":{"source":"iana"},"audio/mpa-robust":{"source":"iana"},"audio/mpeg":{"source":"iana","compressible":false,"extensions":["mpga","mp2","mp2a","mp3","m2a","m3a"]},"audio/mpeg4-generic":{"source":"iana"},"audio/musepack":{"source":"apache"},"audio/ogg":{"source":"iana","compressible":false,"extensions":["oga","ogg","spx","opus"]},"audio/opus":{"source":"iana"},"audio/parityfec":{"source":"iana"},"audio/pcma":{"source":"iana"},"audio/pcma-wb":{"source":"iana"},"audio/pcmu":{"source":"iana"},"audio/pcmu-wb":{"source":"iana"},"audio/prs.sid":{"source":"iana"},"audio/qcelp":{"source":"iana"},"audio/raptorfec":{"source":"iana"},"audio/red":{"source":"iana"},"audio/rtp-enc-aescm128":{"source":"iana"},"audio/rtp-midi":{"source":"iana"},"audio/rtploopback":{"source":"iana"},"audio/rtx":{"source":"iana"},"audio/s3m":{"source":"apache","extensions":["s3m"]},"audio/scip":{"source":"iana"},"audio/silk":{"source":"apache","extensions":["sil"]},"audio/smv":{"source":"iana"},"audio/smv-qcp":{"source":"iana"},"audio/smv0":{"source":"iana"},"audio/sofa":{"source":"iana"},"audio/sp-midi":{"source":"iana"},"audio/speex":{"source":"iana"},"audio/t140c":{"source":"iana"},"audio/t38":{"source":"iana"},"audio/telephone-event":{"source":"iana"},"audio/tetra_acelp":{"source":"iana"},"audio/tetra_acelp_bb":{"source":"iana"},"audio/tone":{"source":"iana"},"audio/tsvcis":{"source":"iana"},"audio/uemclip":{"source":"iana"},"audio/ulpfec":{"source":"iana"},"audio/usac":{"source":"iana"},"audio/vdvi":{"source":"iana"},"audio/vmr-wb":{"source":"iana"},"audio/vnd.3gpp.iufp":{"source":"iana"},"audio/vnd.4sb":{"source":"iana"},"audio/vnd.audiokoz":{"source":"iana"},"audio/vnd.celp":{"source":"iana"},"audio/vnd.cisco.nse":{"source":"iana"},"audio/vnd.cmles.radio-events":{"source":"iana"},"audio/vnd.cns.anp1":{"source":"iana"},"audio/vnd.cns.inf1":{"source":"iana"},"audio/vnd.dece.audio":{"source":"iana","extensions":["uva","uvva"]},"audio/vnd.digital-winds":{"source":"iana","extensions":["eol"]},"audio/vnd.dlna.adts":{"source":"iana"},"audio/vnd.dolby.heaac.1":{"source":"iana"},"audio/vnd.dolby.heaac.2":{"source":"iana"},"audio/vnd.dolby.mlp":{"source":"iana"},"audio/vnd.dolby.mps":{"source":"iana"},"audio/vnd.dolby.pl2":{"source":"iana"},"audio/vnd.dolby.pl2x":{"source":"iana"},"audio/vnd.dolby.pl2z":{"source":"iana"},"audio/vnd.dolby.pulse.1":{"source":"iana"},"audio/vnd.dra":{"source":"iana","extensions":["dra"]},"audio/vnd.dts":{"source":"iana","extensions":["dts"]},"audio/vnd.dts.hd":{"source":"iana","extensions":["dtshd"]},"audio/vnd.dts.uhd":{"source":"iana"},"audio/vnd.dvb.file":{"source":"iana"},"audio/vnd.everad.plj":{"source":"iana"},"audio/vnd.hns.audio":{"source":"iana"},"audio/vnd.lucent.voice":{"source":"iana","extensions":["lvp"]},"audio/vnd.ms-playready.media.pya":{"source":"iana","extensions":["pya"]},"audio/vnd.nokia.mobile-xmf":{"source":"iana"},"audio/vnd.nortel.vbk":{"source":"iana"},"audio/vnd.nuera.ecelp4800":{"source":"iana","extensions":["ecelp4800"]},"audio/vnd.nuera.ecelp7470":{"source":"iana","extensions":["ecelp7470"]},"audio/vnd.nuera.ecelp9600":{"source":"iana","extensions":["ecelp9600"]},"audio/vnd.octel.sbc":{"source":"iana"},"audio/vnd.presonus.multitrack":{"source":"iana"},"audio/vnd.qcelp":{"source":"iana"},"audio/vnd.rhetorex.32kadpcm":{"source":"iana"},"audio/vnd.rip":{"source":"iana","extensions":["rip"]},"audio/vnd.rn-realaudio":{"compressible":false},"audio/vnd.sealedmedia.softseal.mpeg":{"source":"iana"},"audio/vnd.vmx.cvsd":{"source":"iana"},"audio/vnd.wave":{"compressible":false},"audio/vorbis":{"source":"iana","compressible":false},"audio/vorbis-config":{"source":"iana"},"audio/wav":{"compressible":false,"extensions":["wav"]},"audio/wave":{"compressible":false,"extensions":["wav"]},"audio/webm":{"source":"apache","compressible":false,"extensions":["weba"]},"audio/x-aac":{"source":"apache","compressible":false,"extensions":["aac"]},"audio/x-aiff":{"source":"apache","extensions":["aif","aiff","aifc"]},"audio/x-caf":{"source":"apache","compressible":false,"extensions":["caf"]},"audio/x-flac":{"source":"apache","extensions":["flac"]},"audio/x-m4a":{"source":"nginx","extensions":["m4a"]},"audio/x-matroska":{"source":"apache","extensions":["mka"]},"audio/x-mpegurl":{"source":"apache","extensions":["m3u"]},"audio/x-ms-wax":{"source":"apache","extensions":["wax"]},"audio/x-ms-wma":{"source":"apache","extensions":["wma"]},"audio/x-pn-realaudio":{"source":"apache","extensions":["ram","ra"]},"audio/x-pn-realaudio-plugin":{"source":"apache","extensions":["rmp"]},"audio/x-realaudio":{"source":"nginx","extensions":["ra"]},"audio/x-tta":{"source":"apache"},"audio/x-wav":{"source":"apache","extensions":["wav"]},"audio/xm":{"source":"apache","extensions":["xm"]},"chemical/x-cdx":{"source":"apache","extensions":["cdx"]},"chemical/x-cif":{"source":"apache","extensions":["cif"]},"chemical/x-cmdf":{"source":"apache","extensions":["cmdf"]},"chemical/x-cml":{"source":"apache","extensions":["cml"]},"chemical/x-csml":{"source":"apache","extensions":["csml"]},"chemical/x-pdb":{"source":"apache"},"chemical/x-xyz":{"source":"apache","extensions":["xyz"]},"font/collection":{"source":"iana","extensions":["ttc"]},"font/otf":{"source":"iana","compressible":true,"extensions":["otf"]},"font/sfnt":{"source":"iana"},"font/ttf":{"source":"iana","compressible":true,"extensions":["ttf"]},"font/woff":{"source":"iana","extensions":["woff"]},"font/woff2":{"source":"iana","extensions":["woff2"]},"image/aces":{"source":"iana","extensions":["exr"]},"image/apng":{"compressible":false,"extensions":["apng"]},"image/avci":{"source":"iana","extensions":["avci"]},"image/avcs":{"source":"iana","extensions":["avcs"]},"image/avif":{"source":"iana","compressible":false,"extensions":["avif"]},"image/bmp":{"source":"iana","compressible":true,"extensions":["bmp"]},"image/cgm":{"source":"iana","extensions":["cgm"]},"image/dicom-rle":{"source":"iana","extensions":["drle"]},"image/emf":{"source":"iana","extensions":["emf"]},"image/fits":{"source":"iana","extensions":["fits"]},"image/g3fax":{"source":"iana","extensions":["g3"]},"image/gif":{"source":"iana","compressible":false,"extensions":["gif"]},"image/heic":{"source":"iana","extensions":["heic"]},"image/heic-sequence":{"source":"iana","extensions":["heics"]},"image/heif":{"source":"iana","extensions":["heif"]},"image/heif-sequence":{"source":"iana","extensions":["heifs"]},"image/hej2k":{"source":"iana","extensions":["hej2"]},"image/hsj2":{"source":"iana","extensions":["hsj2"]},"image/ief":{"source":"iana","extensions":["ief"]},"image/jls":{"source":"iana","extensions":["jls"]},"image/jp2":{"source":"iana","compressible":false,"extensions":["jp2","jpg2"]},"image/jpeg":{"source":"iana","compressible":false,"extensions":["jpeg","jpg","jpe"]},"image/jph":{"source":"iana","extensions":["jph"]},"image/jphc":{"source":"iana","extensions":["jhc"]},"image/jpm":{"source":"iana","compressible":false,"extensions":["jpm"]},"image/jpx":{"source":"iana","compressible":false,"extensions":["jpx","jpf"]},"image/jxr":{"source":"iana","extensions":["jxr"]},"image/jxra":{"source":"iana","extensions":["jxra"]},"image/jxrs":{"source":"iana","extensions":["jxrs"]},"image/jxs":{"source":"iana","extensions":["jxs"]},"image/jxsc":{"source":"iana","extensions":["jxsc"]},"image/jxsi":{"source":"iana","extensions":["jxsi"]},"image/jxss":{"source":"iana","extensions":["jxss"]},"image/ktx":{"source":"iana","extensions":["ktx"]},"image/ktx2":{"source":"iana","extensions":["ktx2"]},"image/naplps":{"source":"iana"},"image/pjpeg":{"compressible":false},"image/png":{"source":"iana","compressible":false,"extensions":["png"]},"image/prs.btif":{"source":"iana","extensions":["btif"]},"image/prs.pti":{"source":"iana","extensions":["pti"]},"image/pwg-raster":{"source":"iana"},"image/sgi":{"source":"apache","extensions":["sgi"]},"image/svg+xml":{"source":"iana","compressible":true,"extensions":["svg","svgz"]},"image/t38":{"source":"iana","extensions":["t38"]},"image/tiff":{"source":"iana","compressible":false,"extensions":["tif","tiff"]},"image/tiff-fx":{"source":"iana","extensions":["tfx"]},"image/vnd.adobe.photoshop":{"source":"iana","compressible":true,"extensions":["psd"]},"image/vnd.airzip.accelerator.azv":{"source":"iana","extensions":["azv"]},"image/vnd.cns.inf2":{"source":"iana"},"image/vnd.dece.graphic":{"source":"iana","extensions":["uvi","uvvi","uvg","uvvg"]},"image/vnd.djvu":{"source":"iana","extensions":["djvu","djv"]},"image/vnd.dvb.subtitle":{"source":"iana","extensions":["sub"]},"image/vnd.dwg":{"source":"iana","extensions":["dwg"]},"image/vnd.dxf":{"source":"iana","extensions":["dxf"]},"image/vnd.fastbidsheet":{"source":"iana","extensions":["fbs"]},"image/vnd.fpx":{"source":"iana","extensions":["fpx"]},"image/vnd.fst":{"source":"iana","extensions":["fst"]},"image/vnd.fujixerox.edmics-mmr":{"source":"iana","extensions":["mmr"]},"image/vnd.fujixerox.edmics-rlc":{"source":"iana","extensions":["rlc"]},"image/vnd.globalgraphics.pgb":{"source":"iana"},"image/vnd.microsoft.icon":{"source":"iana","compressible":true,"extensions":["ico"]},"image/vnd.mix":{"source":"iana"},"image/vnd.mozilla.apng":{"source":"iana"},"image/vnd.ms-dds":{"compressible":true,"extensions":["dds"]},"image/vnd.ms-modi":{"source":"iana","extensions":["mdi"]},"image/vnd.ms-photo":{"source":"apache","extensions":["wdp"]},"image/vnd.net-fpx":{"source":"iana","extensions":["npx"]},"image/vnd.pco.b16":{"source":"iana","extensions":["b16"]},"image/vnd.radiance":{"source":"iana"},"image/vnd.sealed.png":{"source":"iana"},"image/vnd.sealedmedia.softseal.gif":{"source":"iana"},"image/vnd.sealedmedia.softseal.jpg":{"source":"iana"},"image/vnd.svf":{"source":"iana"},"image/vnd.tencent.tap":{"source":"iana","extensions":["tap"]},"image/vnd.valve.source.texture":{"source":"iana","extensions":["vtf"]},"image/vnd.wap.wbmp":{"source":"iana","extensions":["wbmp"]},"image/vnd.xiff":{"source":"iana","extensions":["xif"]},"image/vnd.zbrush.pcx":{"source":"iana","extensions":["pcx"]},"image/webp":{"source":"apache","extensions":["webp"]},"image/wmf":{"source":"iana","extensions":["wmf"]},"image/x-3ds":{"source":"apache","extensions":["3ds"]},"image/x-cmu-raster":{"source":"apache","extensions":["ras"]},"image/x-cmx":{"source":"apache","extensions":["cmx"]},"image/x-freehand":{"source":"apache","extensions":["fh","fhc","fh4","fh5","fh7"]},"image/x-icon":{"source":"apache","compressible":true,"extensions":["ico"]},"image/x-jng":{"source":"nginx","extensions":["jng"]},"image/x-mrsid-image":{"source":"apache","extensions":["sid"]},"image/x-ms-bmp":{"source":"nginx","compressible":true,"extensions":["bmp"]},"image/x-pcx":{"source":"apache","extensions":["pcx"]},"image/x-pict":{"source":"apache","extensions":["pic","pct"]},"image/x-portable-anymap":{"source":"apache","extensions":["pnm"]},"image/x-portable-bitmap":{"source":"apache","extensions":["pbm"]},"image/x-portable-graymap":{"source":"apache","extensions":["pgm"]},"image/x-portable-pixmap":{"source":"apache","extensions":["ppm"]},"image/x-rgb":{"source":"apache","extensions":["rgb"]},"image/x-tga":{"source":"apache","extensions":["tga"]},"image/x-xbitmap":{"source":"apache","extensions":["xbm"]},"image/x-xcf":{"compressible":false},"image/x-xpixmap":{"source":"apache","extensions":["xpm"]},"image/x-xwindowdump":{"source":"apache","extensions":["xwd"]},"message/cpim":{"source":"iana"},"message/delivery-status":{"source":"iana"},"message/disposition-notification":{"source":"iana","extensions":["disposition-notification"]},"message/external-body":{"source":"iana"},"message/feedback-report":{"source":"iana"},"message/global":{"source":"iana","extensions":["u8msg"]},"message/global-delivery-status":{"source":"iana","extensions":["u8dsn"]},"message/global-disposition-notification":{"source":"iana","extensions":["u8mdn"]},"message/global-headers":{"source":"iana","extensions":["u8hdr"]},"message/http":{"source":"iana","compressible":false},"message/imdn+xml":{"source":"iana","compressible":true},"message/news":{"source":"iana"},"message/partial":{"source":"iana","compressible":false},"message/rfc822":{"source":"iana","compressible":true,"extensions":["eml","mime"]},"message/s-http":{"source":"iana"},"message/sip":{"source":"iana"},"message/sipfrag":{"source":"iana"},"message/tracking-status":{"source":"iana"},"message/vnd.si.simp":{"source":"iana"},"message/vnd.wfa.wsc":{"source":"iana","extensions":["wsc"]},"model/3mf":{"source":"iana","extensions":["3mf"]},"model/e57":{"source":"iana"},"model/gltf+json":{"source":"iana","compressible":true,"extensions":["gltf"]},"model/gltf-binary":{"source":"iana","compressible":true,"extensions":["glb"]},"model/iges":{"source":"iana","compressible":false,"extensions":["igs","iges"]},"model/mesh":{"source":"iana","compressible":false,"extensions":["msh","mesh","silo"]},"model/mtl":{"source":"iana","extensions":["mtl"]},"model/obj":{"source":"iana","extensions":["obj"]},"model/step":{"source":"iana"},"model/step+xml":{"source":"iana","compressible":true,"extensions":["stpx"]},"model/step+zip":{"source":"iana","compressible":false,"extensions":["stpz"]},"model/step-xml+zip":{"source":"iana","compressible":false,"extensions":["stpxz"]},"model/stl":{"source":"iana","extensions":["stl"]},"model/vnd.collada+xml":{"source":"iana","compressible":true,"extensions":["dae"]},"model/vnd.dwf":{"source":"iana","extensions":["dwf"]},"model/vnd.flatland.3dml":{"source":"iana"},"model/vnd.gdl":{"source":"iana","extensions":["gdl"]},"model/vnd.gs-gdl":{"source":"apache"},"model/vnd.gs.gdl":{"source":"iana"},"model/vnd.gtw":{"source":"iana","extensions":["gtw"]},"model/vnd.moml+xml":{"source":"iana","compressible":true},"model/vnd.mts":{"source":"iana","extensions":["mts"]},"model/vnd.opengex":{"source":"iana","extensions":["ogex"]},"model/vnd.parasolid.transmit.binary":{"source":"iana","extensions":["x_b"]},"model/vnd.parasolid.transmit.text":{"source":"iana","extensions":["x_t"]},"model/vnd.pytha.pyox":{"source":"iana"},"model/vnd.rosette.annotated-data-model":{"source":"iana"},"model/vnd.sap.vds":{"source":"iana","extensions":["vds"]},"model/vnd.usdz+zip":{"source":"iana","compressible":false,"extensions":["usdz"]},"model/vnd.valve.source.compiled-map":{"source":"iana","extensions":["bsp"]},"model/vnd.vtu":{"source":"iana","extensions":["vtu"]},"model/vrml":{"source":"iana","compressible":false,"extensions":["wrl","vrml"]},"model/x3d+binary":{"source":"apache","compressible":false,"extensions":["x3db","x3dbz"]},"model/x3d+fastinfoset":{"source":"iana","extensions":["x3db"]},"model/x3d+vrml":{"source":"apache","compressible":false,"extensions":["x3dv","x3dvz"]},"model/x3d+xml":{"source":"iana","compressible":true,"extensions":["x3d","x3dz"]},"model/x3d-vrml":{"source":"iana","extensions":["x3dv"]},"multipart/alternative":{"source":"iana","compressible":false},"multipart/appledouble":{"source":"iana"},"multipart/byteranges":{"source":"iana"},"multipart/digest":{"source":"iana"},"multipart/encrypted":{"source":"iana","compressible":false},"multipart/form-data":{"source":"iana","compressible":false},"multipart/header-set":{"source":"iana"},"multipart/mixed":{"source":"iana"},"multipart/multilingual":{"source":"iana"},"multipart/parallel":{"source":"iana"},"multipart/related":{"source":"iana","compressible":false},"multipart/report":{"source":"iana"},"multipart/signed":{"source":"iana","compressible":false},"multipart/vnd.bint.med-plus":{"source":"iana"},"multipart/voice-message":{"source":"iana"},"multipart/x-mixed-replace":{"source":"iana"},"text/1d-interleaved-parityfec":{"source":"iana"},"text/cache-manifest":{"source":"iana","compressible":true,"extensions":["appcache","manifest"]},"text/calendar":{"source":"iana","extensions":["ics","ifb"]},"text/calender":{"compressible":true},"text/cmd":{"compressible":true},"text/coffeescript":{"extensions":["coffee","litcoffee"]},"text/cql":{"source":"iana"},"text/cql-expression":{"source":"iana"},"text/cql-identifier":{"source":"iana"},"text/css":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["css"]},"text/csv":{"source":"iana","compressible":true,"extensions":["csv"]},"text/csv-schema":{"source":"iana"},"text/directory":{"source":"iana"},"text/dns":{"source":"iana"},"text/ecmascript":{"source":"iana"},"text/encaprtp":{"source":"iana"},"text/enriched":{"source":"iana"},"text/fhirpath":{"source":"iana"},"text/flexfec":{"source":"iana"},"text/fwdred":{"source":"iana"},"text/gff3":{"source":"iana"},"text/grammar-ref-list":{"source":"iana"},"text/html":{"source":"iana","compressible":true,"extensions":["html","htm","shtml"]},"text/jade":{"extensions":["jade"]},"text/javascript":{"source":"iana","compressible":true},"text/jcr-cnd":{"source":"iana"},"text/jsx":{"compressible":true,"extensions":["jsx"]},"text/less":{"compressible":true,"extensions":["less"]},"text/markdown":{"source":"iana","compressible":true,"extensions":["markdown","md"]},"text/mathml":{"source":"nginx","extensions":["mml"]},"text/mdx":{"compressible":true,"extensions":["mdx"]},"text/mizar":{"source":"iana"},"text/n3":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["n3"]},"text/parameters":{"source":"iana","charset":"UTF-8"},"text/parityfec":{"source":"iana"},"text/plain":{"source":"iana","compressible":true,"extensions":["txt","text","conf","def","list","log","in","ini"]},"text/provenance-notation":{"source":"iana","charset":"UTF-8"},"text/prs.fallenstein.rst":{"source":"iana"},"text/prs.lines.tag":{"source":"iana","extensions":["dsc"]},"text/prs.prop.logic":{"source":"iana"},"text/raptorfec":{"source":"iana"},"text/red":{"source":"iana"},"text/rfc822-headers":{"source":"iana"},"text/richtext":{"source":"iana","compressible":true,"extensions":["rtx"]},"text/rtf":{"source":"iana","compressible":true,"extensions":["rtf"]},"text/rtp-enc-aescm128":{"source":"iana"},"text/rtploopback":{"source":"iana"},"text/rtx":{"source":"iana"},"text/sgml":{"source":"iana","extensions":["sgml","sgm"]},"text/shaclc":{"source":"iana"},"text/shex":{"source":"iana","extensions":["shex"]},"text/slim":{"extensions":["slim","slm"]},"text/spdx":{"source":"iana","extensions":["spdx"]},"text/strings":{"source":"iana"},"text/stylus":{"extensions":["stylus","styl"]},"text/t140":{"source":"iana"},"text/tab-separated-values":{"source":"iana","compressible":true,"extensions":["tsv"]},"text/troff":{"source":"iana","extensions":["t","tr","roff","man","me","ms"]},"text/turtle":{"source":"iana","charset":"UTF-8","extensions":["ttl"]},"text/ulpfec":{"source":"iana"},"text/uri-list":{"source":"iana","compressible":true,"extensions":["uri","uris","urls"]},"text/vcard":{"source":"iana","compressible":true,"extensions":["vcard"]},"text/vnd.a":{"source":"iana"},"text/vnd.abc":{"source":"iana"},"text/vnd.ascii-art":{"source":"iana"},"text/vnd.curl":{"source":"iana","extensions":["curl"]},"text/vnd.curl.dcurl":{"source":"apache","extensions":["dcurl"]},"text/vnd.curl.mcurl":{"source":"apache","extensions":["mcurl"]},"text/vnd.curl.scurl":{"source":"apache","extensions":["scurl"]},"text/vnd.debian.copyright":{"source":"iana","charset":"UTF-8"},"text/vnd.dmclientscript":{"source":"iana"},"text/vnd.dvb.subtitle":{"source":"iana","extensions":["sub"]},"text/vnd.esmertec.theme-descriptor":{"source":"iana","charset":"UTF-8"},"text/vnd.familysearch.gedcom":{"source":"iana","extensions":["ged"]},"text/vnd.ficlab.flt":{"source":"iana"},"text/vnd.fly":{"source":"iana","extensions":["fly"]},"text/vnd.fmi.flexstor":{"source":"iana","extensions":["flx"]},"text/vnd.gml":{"source":"iana"},"text/vnd.graphviz":{"source":"iana","extensions":["gv"]},"text/vnd.hans":{"source":"iana"},"text/vnd.hgl":{"source":"iana"},"text/vnd.in3d.3dml":{"source":"iana","extensions":["3dml"]},"text/vnd.in3d.spot":{"source":"iana","extensions":["spot"]},"text/vnd.iptc.newsml":{"source":"iana"},"text/vnd.iptc.nitf":{"source":"iana"},"text/vnd.latex-z":{"source":"iana"},"text/vnd.motorola.reflex":{"source":"iana"},"text/vnd.ms-mediapackage":{"source":"iana"},"text/vnd.net2phone.commcenter.command":{"source":"iana"},"text/vnd.radisys.msml-basic-layout":{"source":"iana"},"text/vnd.senx.warpscript":{"source":"iana"},"text/vnd.si.uricatalogue":{"source":"iana"},"text/vnd.sosi":{"source":"iana"},"text/vnd.sun.j2me.app-descriptor":{"source":"iana","charset":"UTF-8","extensions":["jad"]},"text/vnd.trolltech.linguist":{"source":"iana","charset":"UTF-8"},"text/vnd.wap.si":{"source":"iana"},"text/vnd.wap.sl":{"source":"iana"},"text/vnd.wap.wml":{"source":"iana","extensions":["wml"]},"text/vnd.wap.wmlscript":{"source":"iana","extensions":["wmls"]},"text/vtt":{"source":"iana","charset":"UTF-8","compressible":true,"extensions":["vtt"]},"text/x-asm":{"source":"apache","extensions":["s","asm"]},"text/x-c":{"source":"apache","extensions":["c","cc","cxx","cpp","h","hh","dic"]},"text/x-component":{"source":"nginx","extensions":["htc"]},"text/x-fortran":{"source":"apache","extensions":["f","for","f77","f90"]},"text/x-gwt-rpc":{"compressible":true},"text/x-handlebars-template":{"extensions":["hbs"]},"text/x-java-source":{"source":"apache","extensions":["java"]},"text/x-jquery-tmpl":{"compressible":true},"text/x-lua":{"extensions":["lua"]},"text/x-markdown":{"compressible":true,"extensions":["mkd"]},"text/x-nfo":{"source":"apache","extensions":["nfo"]},"text/x-opml":{"source":"apache","extensions":["opml"]},"text/x-org":{"compressible":true,"extensions":["org"]},"text/x-pascal":{"source":"apache","extensions":["p","pas"]},"text/x-processing":{"compressible":true,"extensions":["pde"]},"text/x-sass":{"extensions":["sass"]},"text/x-scss":{"extensions":["scss"]},"text/x-setext":{"source":"apache","extensions":["etx"]},"text/x-sfv":{"source":"apache","extensions":["sfv"]},"text/x-suse-ymp":{"compressible":true,"extensions":["ymp"]},"text/x-uuencode":{"source":"apache","extensions":["uu"]},"text/x-vcalendar":{"source":"apache","extensions":["vcs"]},"text/x-vcard":{"source":"apache","extensions":["vcf"]},"text/xml":{"source":"iana","compressible":true,"extensions":["xml"]},"text/xml-external-parsed-entity":{"source":"iana"},"text/yaml":{"compressible":true,"extensions":["yaml","yml"]},"video/1d-interleaved-parityfec":{"source":"iana"},"video/3gpp":{"source":"iana","extensions":["3gp","3gpp"]},"video/3gpp-tt":{"source":"iana"},"video/3gpp2":{"source":"iana","extensions":["3g2"]},"video/av1":{"source":"iana"},"video/bmpeg":{"source":"iana"},"video/bt656":{"source":"iana"},"video/celb":{"source":"iana"},"video/dv":{"source":"iana"},"video/encaprtp":{"source":"iana"},"video/ffv1":{"source":"iana"},"video/flexfec":{"source":"iana"},"video/h261":{"source":"iana","extensions":["h261"]},"video/h263":{"source":"iana","extensions":["h263"]},"video/h263-1998":{"source":"iana"},"video/h263-2000":{"source":"iana"},"video/h264":{"source":"iana","extensions":["h264"]},"video/h264-rcdo":{"source":"iana"},"video/h264-svc":{"source":"iana"},"video/h265":{"source":"iana"},"video/iso.segment":{"source":"iana","extensions":["m4s"]},"video/jpeg":{"source":"iana","extensions":["jpgv"]},"video/jpeg2000":{"source":"iana"},"video/jpm":{"source":"apache","extensions":["jpm","jpgm"]},"video/jxsv":{"source":"iana"},"video/mj2":{"source":"iana","extensions":["mj2","mjp2"]},"video/mp1s":{"source":"iana"},"video/mp2p":{"source":"iana"},"video/mp2t":{"source":"iana","extensions":["ts"]},"video/mp4":{"source":"iana","compressible":false,"extensions":["mp4","mp4v","mpg4"]},"video/mp4v-es":{"source":"iana"},"video/mpeg":{"source":"iana","compressible":false,"extensions":["mpeg","mpg","mpe","m1v","m2v"]},"video/mpeg4-generic":{"source":"iana"},"video/mpv":{"source":"iana"},"video/nv":{"source":"iana"},"video/ogg":{"source":"iana","compressible":false,"extensions":["ogv"]},"video/parityfec":{"source":"iana"},"video/pointer":{"source":"iana"},"video/quicktime":{"source":"iana","compressible":false,"extensions":["qt","mov"]},"video/raptorfec":{"source":"iana"},"video/raw":{"source":"iana"},"video/rtp-enc-aescm128":{"source":"iana"},"video/rtploopback":{"source":"iana"},"video/rtx":{"source":"iana"},"video/scip":{"source":"iana"},"video/smpte291":{"source":"iana"},"video/smpte292m":{"source":"iana"},"video/ulpfec":{"source":"iana"},"video/vc1":{"source":"iana"},"video/vc2":{"source":"iana"},"video/vnd.cctv":{"source":"iana"},"video/vnd.dece.hd":{"source":"iana","extensions":["uvh","uvvh"]},"video/vnd.dece.mobile":{"source":"iana","extensions":["uvm","uvvm"]},"video/vnd.dece.mp4":{"source":"iana"},"video/vnd.dece.pd":{"source":"iana","extensions":["uvp","uvvp"]},"video/vnd.dece.sd":{"source":"iana","extensions":["uvs","uvvs"]},"video/vnd.dece.video":{"source":"iana","extensions":["uvv","uvvv"]},"video/vnd.directv.mpeg":{"source":"iana"},"video/vnd.directv.mpeg-tts":{"source":"iana"},"video/vnd.dlna.mpeg-tts":{"source":"iana"},"video/vnd.dvb.file":{"source":"iana","extensions":["dvb"]},"video/vnd.fvt":{"source":"iana","extensions":["fvt"]},"video/vnd.hns.video":{"source":"iana"},"video/vnd.iptvforum.1dparityfec-1010":{"source":"iana"},"video/vnd.iptvforum.1dparityfec-2005":{"source":"iana"},"video/vnd.iptvforum.2dparityfec-1010":{"source":"iana"},"video/vnd.iptvforum.2dparityfec-2005":{"source":"iana"},"video/vnd.iptvforum.ttsavc":{"source":"iana"},"video/vnd.iptvforum.ttsmpeg2":{"source":"iana"},"video/vnd.motorola.video":{"source":"iana"},"video/vnd.motorola.videop":{"source":"iana"},"video/vnd.mpegurl":{"source":"iana","extensions":["mxu","m4u"]},"video/vnd.ms-playready.media.pyv":{"source":"iana","extensions":["pyv"]},"video/vnd.nokia.interleaved-multimedia":{"source":"iana"},"video/vnd.nokia.mp4vr":{"source":"iana"},"video/vnd.nokia.videovoip":{"source":"iana"},"video/vnd.objectvideo":{"source":"iana"},"video/vnd.radgamettools.bink":{"source":"iana"},"video/vnd.radgamettools.smacker":{"source":"iana"},"video/vnd.sealed.mpeg1":{"source":"iana"},"video/vnd.sealed.mpeg4":{"source":"iana"},"video/vnd.sealed.swf":{"source":"iana"},"video/vnd.sealedmedia.softseal.mov":{"source":"iana"},"video/vnd.uvvu.mp4":{"source":"iana","extensions":["uvu","uvvu"]},"video/vnd.vivo":{"source":"iana","extensions":["viv"]},"video/vnd.youtube.yt":{"source":"iana"},"video/vp8":{"source":"iana"},"video/vp9":{"source":"iana"},"video/webm":{"source":"apache","compressible":false,"extensions":["webm"]},"video/x-f4v":{"source":"apache","extensions":["f4v"]},"video/x-fli":{"source":"apache","extensions":["fli"]},"video/x-flv":{"source":"apache","compressible":false,"extensions":["flv"]},"video/x-m4v":{"source":"apache","extensions":["m4v"]},"video/x-matroska":{"source":"apache","compressible":false,"extensions":["mkv","mk3d","mks"]},"video/x-mng":{"source":"apache","extensions":["mng"]},"video/x-ms-asf":{"source":"apache","extensions":["asf","asx"]},"video/x-ms-vob":{"source":"apache","extensions":["vob"]},"video/x-ms-wm":{"source":"apache","extensions":["wm"]},"video/x-ms-wmv":{"source":"apache","compressible":false,"extensions":["wmv"]},"video/x-ms-wmx":{"source":"apache","extensions":["wmx"]},"video/x-ms-wvx":{"source":"apache","extensions":["wvx"]},"video/x-msvideo":{"source":"apache","extensions":["avi"]},"video/x-sgi-movie":{"source":"apache","extensions":["movie"]},"video/x-smv":{"source":"apache","extensions":["smv"]},"x-conference/x-cooltalk":{"source":"apache","extensions":["ice"]},"x-shader/x-fragment":{"compressible":true},"x-shader/x-vertex":{"compressible":true}}');
+
 /***/ })
 
 /******/ 	});
@@ -26676,23 +46034,13 @@ module.exports = parseParams
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-var __webpack_exports__ = {};
-// This entry need to be wrapped in an IIFE because it need to be in strict mode.
-(() => {
-"use strict";
-var exports = __webpack_exports__;
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-/**
- * The entrypoint for the action.
- */
-const main_1 = __nccwpck_require__(399);
-// eslint-disable-next-line @typescript-eslint/no-floating-promises
-(0, main_1.run)();
-
-})();
-
-module.exports = __webpack_exports__;
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __nccwpck_require__(6144);
+/******/ 	module.exports = __webpack_exports__;
+/******/ 	
 /******/ })()
 ;
 //# sourceMappingURL=index.js.map
