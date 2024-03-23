@@ -32,6 +32,7 @@ export class PostTumblrAction<F extends Effect.URIS> {
         this.requiredInput(M, 'consumer-secret'),
         this.requiredInput(M, 'access-token'),
         this.requiredInput(M, 'access-token-secret'),
+        this.requiredInput(M, 'blog-identifier'),
         this.requiredInput(M, 'text')
       ]),
       maybeInputs =>
@@ -43,6 +44,7 @@ export class PostTumblrAction<F extends Effect.URIS> {
                 consumerSecret,
                 accessToken,
                 accessTokenSecret,
+                blogIdentifier,
                 text
               ] = inputs
 
@@ -50,7 +52,8 @@ export class PostTumblrAction<F extends Effect.URIS> {
                 consumerKey,
                 consumerSecret,
                 accessToken,
-                accessTokenSecret
+                accessTokenSecret,
+                blogIdentifier
               } as Tumblr.Config
 
               return [config, text] as [Tumblr.Config, string]

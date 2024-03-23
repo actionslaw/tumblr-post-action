@@ -19,8 +19,8 @@ describe('Validate.required', () => {
 })
 
 describe('Validate.requiredF', () => {
-  it('validates required field', () => {
-    const validated = Validate.requiredF(Effect, 'field')('test-input')()
+  it('validates required field', async () => {
+    const validated = await Validate.requiredF(Effect, 'field')('test-input')()
     expect(validated).toEqualRight('test-input')
   })
 })

@@ -6,5 +6,5 @@ export interface Runtime<F extends Effect.URIS> {
 }
 
 export const GithubActionsRuntime: Runtime<Effect.URI> = {
-  inputs: (key: string) => Effect.tryCatch(() => core.getInput(key))
+  inputs: (key: string) => Effect.tryCatch(async () => core.getInput(key))
 }

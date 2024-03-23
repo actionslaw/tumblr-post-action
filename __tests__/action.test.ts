@@ -91,7 +91,8 @@ const config = {
   'consumer-key': 'test-consumer-key',
   'consumer-secret': 'test-consumer-secret',
   'access-token': 'test-access-token',
-  'access-token-secret': 'test-access-token-secret'
+  'access-token-secret': 'test-access-token-secret',
+  'blog-identifier': 'test-blog-identifier'
 }
 
 describe('PostTumblrAction', () => {
@@ -117,7 +118,8 @@ describe('PostTumblrAction', () => {
         consumerKey: 'test-consumer-key',
         consumerSecret: 'test-consumer-secret',
         accessToken: 'test-access-token',
-        accessTokenSecret: 'test-access-token-secret'
+        accessTokenSecret: 'test-access-token-secret',
+        blogIdentifier: 'test-blog-identifier'
       } as Tumblr.Config)
     )
   })

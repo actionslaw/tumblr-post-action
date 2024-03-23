@@ -11,6 +11,8 @@ export const GithubActionsLogger: Logger<Effect.URI> = {
       ([key, value]) => `${key}=[${value}]`
     )
 
-    return Effect.tryCatch(() => core.info([message, ...segments].join(' ')))
+    return Effect.tryCatch(async () =>
+      core.info([message, ...segments].join(' '))
+    )
   }
 }
