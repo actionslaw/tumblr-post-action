@@ -43042,7 +43042,7 @@ const logger_1 = __nccwpck_require__(4636);
 const runtime_1 = __nccwpck_require__(7073);
 const tumblr_1 = __nccwpck_require__(8537);
 const Effect = __importStar(__nccwpck_require__(8568));
-const action = new action_1.PostTumblrAction(logger_1.GithubActionsLogger, runtime_1.GithubActionsRuntime, new tumblr_1.TumblrJs());
+const action = new action_1.PostTumblrAction(logger_1.GitHubActionsLogger, runtime_1.GitHubActionsRuntime, new tumblr_1.TumblrJs());
 Effect.runSync(action.program);
 
 
@@ -43077,10 +43077,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.GithubActionsLogger = void 0;
+exports.GitHubActionsLogger = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const Effect = __importStar(__nccwpck_require__(8568));
-exports.GithubActionsLogger = {
+exports.GitHubActionsLogger = {
     info: (message, data) => {
         const segments = Object.entries(data).map(([key, value]) => `${key}=[${value}]`);
         return Effect.tryCatch(async () => core.info([message, ...segments].join(' ')));
@@ -43119,10 +43119,10 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.GithubActionsRuntime = void 0;
+exports.GitHubActionsRuntime = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const Effect = __importStar(__nccwpck_require__(8568));
-exports.GithubActionsRuntime = {
+exports.GitHubActionsRuntime = {
     inputs: (key) => Effect.tryCatch(async () => core.getInput(key))
 };
 

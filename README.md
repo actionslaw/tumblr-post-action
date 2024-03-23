@@ -6,7 +6,7 @@
 [![CodeQL](https://github.com/actions/actionslaw/tumblr-post-action/workflows/codeql-analysis.yml/badge.svg)](https://github.com/actions/actionslaw/tumblr-post-action/workflows/codeql-analysis.yml)
 [![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
 
-Automatically post to Tumblr via Github Actions.
+Automatically post to Tumblr via GitHub Actions.
 
 ## Usage
 

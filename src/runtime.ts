@@ -5,6 +5,6 @@ export interface Runtime<F extends Effect.URIS> {
   readonly inputs: (key: string) => Effect.Kind<F, string | undefined>
 }
 
-export const GithubActionsRuntime: Runtime<Effect.URI> = {
+export const GitHubActionsRuntime: Runtime<Effect.URI> = {
   inputs: (key: string) => Effect.tryCatch(async () => core.getInput(key))
 }

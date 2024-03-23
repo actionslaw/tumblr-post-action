@@ -5,7 +5,7 @@ export interface Logger<F extends Effect.URIS> {
   info: (message: string, data: Record<string, string>) => Effect.Kind<F, void>
 }
 
-export const GithubActionsLogger: Logger<Effect.URI> = {
+export const GitHubActionsLogger: Logger<Effect.URI> = {
   info: (message: string, data: Record<string, string>) => {
     const segments = Object.entries(data).map(
       ([key, value]) => `${key}=[${value}]`

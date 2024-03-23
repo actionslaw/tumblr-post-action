@@ -1,5 +1,5 @@
 name: Tumblr Post Action
-description: Automatically post to Tumblr via Github Actions
+description: Automatically post to Tumblr via GitHub Actions
 author: Actionslaw
 
 # Add your action's branding here. This will appear on the GitHub Marketplace.
@@ -9,6 +9,12 @@ branding:
 
 # Define your inputs here.
 inputs:
+  blog-identifier:
+    description: >
+      Unique identifier for your blog. You can find your identifier by following
+      this instructions here:
+      https://www.tumblr.com/docs/en/api/v2#blog-identifiers
+    required: true
   text:
     description: The text to post to Tumblr.
     required: true

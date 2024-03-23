@@ -1,12 +1,12 @@
 import { PostTumblrAction } from './action'
-import { GithubActionsLogger } from './logger'
-import { GithubActionsRuntime } from './runtime'
+import { GitHubActionsLogger } from './logger'
+import { GitHubActionsRuntime } from './runtime'
 import { TumblrJs } from './tumblr'
 import * as Effect from './effect'
 
 const action = new PostTumblrAction<Effect.URI>(
-  GithubActionsLogger,
-  GithubActionsRuntime,
+  GitHubActionsLogger,
+  GitHubActionsRuntime,
   new TumblrJs()
 )
 

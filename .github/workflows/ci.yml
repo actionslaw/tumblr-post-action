@@ -63,7 +63,3 @@ jobs:
           access-token: ${{ secrets.TUMBLR_ACCESS_TOKEN }}
           access-token-secret: ${{ secrets.TUMBLR_ACCESS_TOKEN_SECRET }}
           blog-identifier: grislyeye-test.tumblr.com
-
-      - name: Print Output
-        id: output
-        run: echo "${{ steps.test-action.outputs.time }}"
