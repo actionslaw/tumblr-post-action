@@ -17,5 +17,10 @@ export const GitHubActionsRuntime: Runtime<Effect.URI> = {
     Effect.tryCatch(async () => core.setOutput(name, value)),
 
   fs: (path: string) =>
-    Effect.tryCatch(async () => fs.readdirSync(path).map(f => `${path}/${f}`))
+    Effect.tryCatch(async () => {
+      if (fs.existsSync(path)) {
+        return fs.readdirSync(path).map(f => `${path}/${f}`)
+      }
+      return []
+    })
 }

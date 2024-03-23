@@ -43039,7 +43039,7 @@ exports.M = {
     tap
 };
 async function runSync(program) {
-    E.getOrElse(error => {
+    return E.getOrElse(error => {
         throw error;
     })(await program());
 }
@@ -43224,7 +43224,12 @@ const fs = __importStar(__nccwpck_require__(7147));
 exports.GitHubActionsRuntime = {
     inputs: (key) => Effect.tryCatch(async () => core.getInput(key)),
     output: (name, value) => Effect.tryCatch(async () => core.setOutput(name, value)),
-    fs: (path) => Effect.tryCatch(async () => fs.readdirSync(path).map(f => `${path}/${f}`))
+    fs: (path) => Effect.tryCatch(async () => {
+        if (fs.existsSync(path)) {
+            return fs.readdirSync(path).map(f => `${path}/${f}`);
+        }
+        return [];
+    })
 };
 
 

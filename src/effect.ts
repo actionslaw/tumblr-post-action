@@ -34,10 +34,10 @@ export const M = {
   tap
 }
 
-type ProgramRunner = () => Promise<E.Either<Error, void>>
+type ProgramRunner<S = void> = () => Promise<E.Either<Error, S>>
 
-export async function runSync(program: ProgramRunner): Promise<void> {
-  E.getOrElse<Error, void>(error => {
+export async function runSync<A = void>(program: ProgramRunner<A>): Promise<A> {
+  return E.getOrElse<Error, A>(error => {
     throw error
   })(await program())
 }
