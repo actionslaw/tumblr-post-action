@@ -62,6 +62,7 @@ jobs:
           consumer-secret: ${{ secrets.TUMBLR_CONSUMER_API_SECRET }}
           access-token: ${{ secrets.TUMBLR_ACCESS_TOKEN }}
           access-token-secret: ${{ secrets.TUMBLR_ACCESS_TOKEN_SECRET }}
+          blog-identifier: grislyeye-test.tumblr.com
 
       - name: Print Output
         id: output
