@@ -10,7 +10,7 @@ Automatically post to Tumblr via GitHub Actions.
 
 ## Usage
 
-Configure your workflow to use `actionslaw/tumblr-post-action@v1`, and provide
+Configure your workflow to use `actionslaw/tumblr-post-action@v1.2`, and provide
 the post you want to send as the `text` input. You can specify a post you'd like
 to reply to using the `replyTo` input. You can create image posts by setting the
 `media` input to point to a folder containing images.
@@ -33,7 +33,7 @@ jobs:
   tweet:
     runs-on: ubuntu-latest
     steps:
-      - uses: actionslaw/tumblr-post-action@v1
+      - uses: actionslaw/tumblr-post-action@v1.2
         with:
           text: 'Hi, this is a test!'
           replyTo: https://tumblr.com/posts
