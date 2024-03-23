@@ -11,13 +11,18 @@ Automatically post to Tumblr via Github Actions.
 ## Usage
 
 Configure your workflow to use `actionslaw/tumblr-post-action@v1`, and provide
-the post you want to wrapsend as the `text` input. You can specify a post you'd
-like to reply to using the `replyTo` input. You can create image posts by
-setting the `media` input to point to a folder containting images.
+the post you want to send as the `text` input. You can specify a post you'd like
+to reply to using the `replyTo` input. You can create image posts by setting the
+`media` input to point to a folder containting images.
 
-Provide the authentication keys and tokens for your Tumblr app as the
-`consumer-key`, `consumer-secret`, `access-token`, and `access-token-secret`
-inputs.
+Provide the
+[authentication keys and tokens](https://tumblr.github.io/tumblr.js/index.html#md:authentication)
+for your Tumblr app as the `consumer-key`, `consumer-secret`, `access-token`,
+and `access-token-secret` inputs.
+
+You also need to specify your
+[blog identifier](https://www.tumblr.com/docs/en/api/v2#blog-identifiers) as the
+`consumer-key` identifier.
 
 For example:
 
@@ -33,13 +38,14 @@ jobs:
           status: 'Hi, this is a test!'
           replyTo: https://tumblr.com/posts
           media:
-          consumer-key: ${{ secrets.TWITTER_CONSUMER_API_KEY }}
-          consumer-secret: ${{ secrets.TWITTER_CONSUMER_API_SECRET }}
-          access-token: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-          access-token-secret: ${{ secrets.TWITTER_ACCESS_TOKEN_SECRET }}
+          consumer-key: ${{ secrets.TUMBLR_CONSUMER_API_KEY }}
+          consumer-secret: ${{ secrets.TUMBLR_CONSUMER_API_SECRET }}
+          access-token: ${{ secrets.TUMBLR_ACCESS_TOKEN }}
+          access-token-secret: ${{ secrets.TUMBLR_ACCESS_TOKEN_SECRET }}
+          blog-identifier: test.tumblr.com
 ```
 
-Now whenever you push something to your repository, GitHub Actions will tweet on
+Now whenever you push something to your repository, GitHub Actions will post on
 your behalf.
 
 ## Development
