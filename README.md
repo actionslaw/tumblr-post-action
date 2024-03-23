@@ -1,10 +1,10 @@
 # GitHub Action to create Tumblr posts
 
-[![GitHub Super-Linter](https://github.com/actions/actionslaw/tumblr-post-action/workflows/linter.yml/badge.svg)](https://github.com/super-linter/super-linter)
-![CI](https://github.com/actions/actionslaw/tumblr-post-action/workflows/ci.yml/badge.svg)
-[![Check dist/](https://github.com/actions/actionslaw/tumblr-post-action/workflows/check-dist.yml/badge.svg)](https://github.com/actions/actionslaw/tumblr-post-action/workflows/check-dist.yml)
-[![CodeQL](https://github.com/actions/actionslaw/tumblr-post-action/workflows/codeql-analysis.yml/badge.svg)](https://github.com/actions/actionslaw/tumblr-post-action/workflows/codeql-analysis.yml)
-[![Coverage](./badges/coverage.svg)](./badges/coverage.svg)
+[![GitHub Super-Linter](https://github.com/actionslaw/tumblr-post-action/actions/workflows/linter.yml/badge.svg)](https://github.com/actionslaw/tumblr-post-action/actions/workflows/linter.yml)
+[![CI](https://github.com/actionslaw/tumblr-post-action/actions/workflows/ci.yml/badge.svg)](https://github.com/actionslaw/tumblr-post-action/actions/workflows/ci.yml)
+[![Check dist/](https://github.com/actionslaw/tumblr-post-action/actions/workflows/check-dist.yml/badge.svg)](https://github.com/actionslaw/tumblr-post-action/actions/workflows/check-dist.yml)
+[![CodeQL](https://github.com/actionslaw/tumblr-post-action/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/actionslaw/tumblr-post-action/actions/workflows/codeql-analysis.yml)
+![Coverage](./badges/coverage.svg)
 
 Automatically post to Tumblr via GitHub Actions.
 
