@@ -35,9 +35,9 @@ jobs:
     steps:
       - uses: actionslaw/tumblr-post-action@v1
         with:
-          status: 'Hi, this is a test!'
+          text: 'Hi, this is a test!'
           replyTo: https://tumblr.com/posts
-          media:
+          media: ./media
           consumer-key: ${{ secrets.TUMBLR_CONSUMER_API_KEY }}
           consumer-secret: ${{ secrets.TUMBLR_CONSUMER_API_SECRET }}
           access-token: ${{ secrets.TUMBLR_ACCESS_TOKEN }}
@@ -80,12 +80,12 @@ need to perform some initial setup steps.
 
    ```bash
    $ npm test
-
+   
    PASS  ./index.test.js
      ✓ throws invalid number (3ms)
      ✓ wait 500 ms (504ms)
      ✓ test runs (95ms)
-
+   
    ...
    ```
 
