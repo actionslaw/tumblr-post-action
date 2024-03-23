@@ -57,7 +57,11 @@ jobs:
         id: test-action
         uses: ./
         with:
-          milliseconds: 2000
+          text: 'Hi, this is a test!'
+          consumer-key: ${{ secrets.TUMBLR_CONSUMER_API_KEY }}
+          consumer-secret: ${{ secrets.TUMBLR_CONSUMER_API_SECRET }}
+          access-token: ${{ secrets.TUMBLR_ACCESS_TOKEN }}
+          access-token-secret: ${{ secrets.TUMBLR_ACCESS_TOKEN_SECRET }}
 
       - name: Print Output
         id: output
