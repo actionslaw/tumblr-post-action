@@ -6,6 +6,7 @@ describe('GitHubActionsRuntime', () => {
     const maybeFolders = GitHubActionsRuntime.fs('./')
     expect((await Effect.runSync(maybeFolders)).length).toBeGreaterThan(0)
   })
+
   it('should ignore non-existent folder folder', async () => {
     const maybeFolders = GitHubActionsRuntime.fs('./non-existent')
     expect((await Effect.runSync(maybeFolders)).length).toBe(0)
