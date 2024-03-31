@@ -42948,13 +42948,13 @@ class PostTumblrAction {
         return this.M.chain(this.runtime.inputs('replyTo'), id => (0, post_1.postDecoder)(this.M, id));
     }
     post(config, post) {
-        return this.M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.M.chain(this.media(), media => this.tumblr.post(config, post.text, media)));
+        return this.M.chain(this.logger.info('🥃 sending tumblr post', { text: post.text }), () => this.M.chain(this.media(), media => this.tumblr.post(config, post.text, media, post.tags)));
     }
     reblog(config, reblog) {
         return this.M.chain(this.logger.info('🥃 reblogging tumblr post', {
             text: reblog.text,
             'reply-id': reblog.replyTo
-        }), () => this.M.chain(this.media(), media => this.M.chain(this.replyPost(), reply => this.tumblr.reblog(config, reblog.text, reply, media))));
+        }), () => this.M.chain(this.media(), media => this.M.chain(this.replyPost(), reply => this.tumblr.reblog(config, reblog.text, reply, media, reblog.tags))));
     }
     media() {
         const logMediaPath = Effect.M.tap(this.M, media => media
@@ -42972,8 +42972,8 @@ class PostTumblrAction {
             this.requiredInput('access-token'),
             this.requiredInput('access-token-secret'),
             this.requiredInput('blog-identifier')
-        ]), maybeInputs => this.M.map(maybeInputs, inputs => {
-            const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier] = inputs;
+        ]), maybeConfigs => this.M.map(maybeConfigs, configs => {
+            const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier] = configs;
             const config = {
                 consumerKey,
                 consumerSecret,
@@ -42983,6 +42983,18 @@ class PostTumblrAction {
             };
             return config;
         }));
+    }
+    tags() {
+        const logTags = Effect.M.tap(this.M, tags => {
+            if (tags.length > 0) {
+                return this.logger.info('posting with tags', {
+                    tags: tags.join(',')
+                });
+            }
+            else
+                return this.M.of(undefined);
+        });
+        return logTags(this.M.chain(this.runtime.inputs('tags'), Validate.stringArrayF(this.M, 'tags')));
     }
     send(post) {
         return this.M.chain(this.config(), config => {
@@ -42998,11 +43010,13 @@ class PostTumblrAction {
     }
     program() {
         return this.M.chain(this.M.chain(this.requiredInput('text'), text => {
-            return this.M.chain(this.runtime.inputs('replyTo'), maybeReplyTo => {
-                const post = maybeReplyTo
-                    ? { kind: 'reblog', text, replyTo: maybeReplyTo }
-                    : { kind: 'text', text };
-                return this.send(post);
+            return this.M.chain(this.tags(), tags => {
+                return this.M.chain(this.runtime.inputs('replyTo'), maybeReplyTo => {
+                    const post = maybeReplyTo
+                        ? { kind: 'reblog', text, replyTo: maybeReplyTo, tags }
+                        : { kind: 'text', text, tags };
+                    return this.send(post);
+                });
             });
         }), (post) => {
             const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`;
@@ -43290,7 +43304,7 @@ const fs = __importStar(__nccwpck_require__(7147));
 // eslint-disable-next-line @typescript-eslint/no-var-requires,  @typescript-eslint/no-require-imports, import/no-commonjs
 const tumblr = __nccwpck_require__(883);
 class TumblrJs {
-    post(config, text, media) {
+    post(config, text, media, tags) {
         const client = tumblr.createClient({
             consumer_key: config.consumerKey,
             consumer_secret: config.consumerSecret,
@@ -43311,7 +43325,8 @@ class TumblrJs {
                 };
             });
             const createdPost = await client.createPost(config.blogIdentifier, {
-                content: [textBlock, ...imageBlocks]
+                content: [textBlock, ...imageBlocks],
+                tags
             });
             const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`;
             const postInfo = await client.getRequest(url);
@@ -43323,7 +43338,7 @@ class TumblrJs {
             return post;
         });
     }
-    reblog(config, text, replyTo, media) {
+    reblog(config, text, replyTo, media, tags) {
         const client = tumblr.createClient({
             consumer_key: config.consumerKey,
             consumer_secret: config.consumerSecret,
@@ -43347,7 +43362,8 @@ class TumblrJs {
                 content: [textBlock, ...imageBlocks],
                 parent_post_id: replyTo.id,
                 parent_tumblelog_uuid: replyTo.tumblelogId,
-                reblog_key: replyTo.reblogKey
+                reblog_key: replyTo.reblogKey,
+                tags
             });
             const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`;
             const postInfo = await client.getRequest(url);
@@ -43394,15 +43410,17 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.requiredF = exports.required = exports.InvalidField = void 0;
+exports.stringArrayF = exports.requiredF = exports.stringArray = exports.required = exports.InvalidField = void 0;
 const E = __importStar(__nccwpck_require__(7534));
 class InvalidField extends Error {
     field;
     code;
-    constructor(field, code) {
+    cause;
+    constructor(field, code, cause) {
         super(`Field ${field} invalid (${code})`);
         this.field = field;
         this.code = code;
+        this.cause = cause;
     }
 }
 exports.InvalidField = InvalidField;
@@ -43413,6 +43431,18 @@ function required(field, input) {
         return E.left(new InvalidField(field, 'missing'));
 }
 exports.required = required;
+function allStrings(array) {
+    return array.reduce((wasString, s) => wasString && typeof s == 'string', true);
+}
+function stringArray(field, input) {
+    return E.tryCatch(() => {
+        const json = input ? JSON.parse(input) : [];
+        if (Array.isArray(json) && allStrings(json))
+            return json;
+        throw new InvalidField(field, 'invalid-array');
+    }, e => new InvalidField(field, 'invalid-array', e));
+}
+exports.stringArray = stringArray;
 function lift(M) {
     return E.match((err) => M.throwError(err), (head) => M.of(head));
 }
@@ -43420,6 +43450,10 @@ function requiredF(M, field) {
     return (input) => lift(M)(required(field, input));
 }
 exports.requiredF = requiredF;
+function stringArrayF(M, field) {
+    return (input) => lift(M)(stringArray(field, input));
+}
+exports.stringArrayF = stringArrayF;
 
 
 /***/ }),

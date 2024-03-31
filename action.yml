@@ -26,6 +26,10 @@ inputs:
       Identifier of the response to reply to in the format of:
       `post-id|tumblelog-uuid|reblog-key`.
     required: false
+  tags:
+    description: >
+      JSON array of hashtags to post with.
+    required: false
   consumer-key:
     description: >
       Consumer API key, available from the Tumblr OAuth applications page:

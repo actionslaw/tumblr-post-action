@@ -10,12 +10,14 @@ import { pipe } from 'fp-ts/function'
 interface TextPost {
   kind: 'text'
   text: string
+  tags: string[]
 }
 
 interface Reblog {
   kind: 'reblog'
   text: string
   replyTo: string
+  tags: string[]
 }
 
 type PostType = TextPost | Reblog
@@ -56,7 +58,7 @@ export class PostTumblrAction<F extends Effect.URIS> {
       this.logger.info('🥃 sending tumblr post', { text: post.text }),
       () =>
         this.M.chain(this.media(), media =>
-          this.tumblr.post(config, post.text, media)
+          this.tumblr.post(config, post.text, media, post.tags)
         )
     )
   }
@@ -70,7 +72,7 @@ export class PostTumblrAction<F extends Effect.URIS> {
       () =>
         this.M.chain(this.media(), media =>
           this.M.chain(this.replyPost(), reply =>
-            this.tumblr.reblog(config, reblog.text, reply, media)
+            this.tumblr.reblog(config, reblog.text, reply, media, reblog.tags)
           )
         )
     )
@@ -102,15 +104,15 @@ export class PostTumblrAction<F extends Effect.URIS> {
         this.requiredInput('access-token-secret'),
         this.requiredInput('blog-identifier')
       ]),
-      maybeInputs =>
-        this.M.map(maybeInputs, inputs => {
+      maybeConfigs =>
+        this.M.map(maybeConfigs, configs => {
           const [
             consumerKey,
             consumerSecret,
             accessToken,
             accessTokenSecret,
             blogIdentifier
-          ] = inputs
+          ] = configs
 
           const config: Tumblr.Config = {
             consumerKey,
@@ -122,6 +124,23 @@ export class PostTumblrAction<F extends Effect.URIS> {
 
           return config
         })
+    )
+  }
+
+  tags(): Effect.Kind<F, string[]> {
+    const logTags = Effect.M.tap<F, string[]>(this.M, tags => {
+      if (tags.length > 0) {
+        return this.logger.info('posting with tags', {
+          tags: tags.join(',')
+        })
+      } else return this.M.of(undefined)
+    })
+
+    return logTags(
+      this.M.chain(
+        this.runtime.inputs('tags'),
+        Validate.stringArrayF(this.M, 'tags')
+      )
     )
   }
 
@@ -143,11 +162,13 @@ export class PostTumblrAction<F extends Effect.URIS> {
   program(): Effect.Kind<F, void> {
     return this.M.chain(
       this.M.chain(this.requiredInput('text'), text => {
-        return this.M.chain(this.runtime.inputs('replyTo'), maybeReplyTo => {
-          const post: PostType = maybeReplyTo
-            ? { kind: 'reblog', text, replyTo: maybeReplyTo }
-            : { kind: 'text', text }
-          return this.send(post)
+        return this.M.chain(this.tags(), tags => {
+          return this.M.chain(this.runtime.inputs('replyTo'), maybeReplyTo => {
+            const post: PostType = maybeReplyTo
+              ? { kind: 'reblog', text, replyTo: maybeReplyTo, tags }
+              : { kind: 'text', text, tags }
+            return this.send(post)
+          })
         })
       }),
       (post: Post) => {

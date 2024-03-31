@@ -18,8 +18,10 @@ interface TestState {
   posts: string[]
   postedMedia: string[]
   reblogs: [string, Post][]
+  tags: string[]
   sampleTextPost: Post
   media: Record<string, string[]>
+  postedTags: [string, Post][]
 }
 
 const URI = 'TestEffect'
@@ -69,7 +71,12 @@ const TestRuntime: Runtime<URI> = {
 }
 
 const TestTumblr: Tumblr.Interface<URI> = {
-  post: (config: Tumblr.Config, text: string, media: string[]) => {
+  post: (
+    config: Tumblr.Config,
+    text: string,
+    media: string[],
+    tags: string[]
+  ) => {
     return S.chain(() =>
       S.gets<TestState, Error, Post>(s => {
         const post: Post = s.sampleTextPost
@@ -80,6 +87,7 @@ const TestTumblr: Tumblr.Interface<URI> = {
         const update = {
           posts: [...s.posts, text],
           postedMedia: media,
+          postedTags: tags,
           config: O.some(config)
         }
         return Object.assign(s, update)
@@ -91,7 +99,8 @@ const TestTumblr: Tumblr.Interface<URI> = {
     config: Tumblr.Config,
     text: string,
     replyTo: Post,
-    media: string[]
+    media: string[],
+    tags: string[]
   ) => {
     return S.chain(() =>
       S.gets<TestState, Error, Post>(s => {
@@ -103,6 +112,7 @@ const TestTumblr: Tumblr.Interface<URI> = {
         const update = {
           reblogs: [...s.reblogs, [text, replyTo]],
           postedMedia: media,
+          postedTags: tags,
           config: O.some(config)
         }
         return Object.assign(s, update)
@@ -125,12 +135,14 @@ function run(
     posts: [],
     postedMedia: [],
     reblogs: [],
+    tags: [],
     sampleTextPost: {
       id: 'test-post-id',
       tumblelogId: 'test-tumblelog-uuid',
       reblogKey: 'test-reblog-key'
     },
-    media: { path: ['file-1', 'file-2'] }
+    media: { path: ['file-1', 'file-2'] },
+    postedTags: []
   }
 
   const maybeRun = program(initialState)
@@ -218,6 +230,33 @@ describe('PostTumblrAction', () => {
     ])
   })
 
+  it('post to tumblr with tags', () => {
+    const inputs = {
+      text: 'test-post',
+      tags: '["#tag1", "#tag2"]',
+      ...config
+    }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.postedTags)).toEqualRight(['#tag1', '#tag2'])
+  })
+
+  it('log posted tags', () => {
+    const inputs = {
+      text: 'test-reblog',
+      tags: '["#tag1", "#tag2"]',
+      ...config
+    }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.logs)).toEqualRight([
+      ['tags', '#tag1,#tag2'],
+      ['text', 'test-reblog']
+    ])
+  })
+
   it('reblog tumblr post', () => {
     const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
     const expectedReply: Post = {
@@ -286,6 +325,38 @@ describe('PostTumblrAction', () => {
       ['reply-id', replyId],
       ['path', 'path'],
       ['files', 'file-1,file-2']
+    ])
+  })
+
+  it('reblog to tumblr with tags', () => {
+    const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
+    const inputs = {
+      text: 'test-post',
+      replyTo: replyId,
+      tags: '["#tag1", "#tag2"]',
+      ...config
+    }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.postedTags)).toEqualRight(['#tag1', '#tag2'])
+  })
+
+  it('log reblogged tags', () => {
+    const replyId = 'test-reply-id|test-tumblelog-uuid|test-reblog-key'
+    const inputs = {
+      text: 'test-reblog',
+      replyTo: replyId,
+      tags: '["#tag1", "#tag2"]',
+      ...config
+    }
+
+    const state = run(action.program(), inputs)
+
+    expect(optics(state, s => s.logs)).toEqualRight([
+      ['tags', '#tag1,#tag2'],
+      ['text', 'test-reblog'],
+      ['reply-id', replyId]
     ])
   })
 })

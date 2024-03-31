@@ -16,14 +16,16 @@ export interface Interface<F extends Effect.URIS> {
   readonly post: (
     config: Config,
     text: string,
-    media: string[]
+    media: string[],
+    tags: string[]
   ) => Effect.Kind<F, Post>
 
   readonly reblog: (
     config: Config,
     text: string,
     replyTo: Post,
-    media: string[]
+    media: string[],
+    tags: string[]
   ) => Effect.Kind<F, Post>
 }
 
@@ -31,7 +33,8 @@ export class TumblrJs implements Interface<Effect.URI> {
   post(
     config: Config,
     text: string,
-    media: string[]
+    media: string[],
+    tags: string[]
   ): Effect.Kind<Effect.URI, Post> {
     const client = tumblr.createClient({
       consumer_key: config.consumerKey,
@@ -56,7 +59,8 @@ export class TumblrJs implements Interface<Effect.URI> {
         })
 
       const createdPost = await client.createPost(config.blogIdentifier, {
-        content: [textBlock, ...imageBlocks]
+        content: [textBlock, ...imageBlocks],
+        tags
       })
 
       const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`
@@ -76,7 +80,8 @@ export class TumblrJs implements Interface<Effect.URI> {
     config: Config,
     text: string,
     replyTo: Post,
-    media: string[]
+    media: string[],
+    tags: string[]
   ): Effect.Kind<Effect.URI, Post> {
     const client = tumblr.createClient({
       consumer_key: config.consumerKey,
@@ -104,7 +109,8 @@ export class TumblrJs implements Interface<Effect.URI> {
         content: [textBlock, ...imageBlocks],
         parent_post_id: replyTo.id,
         parent_tumblelog_uuid: replyTo.tumblelogId,
-        reblog_key: replyTo.reblogKey
+        reblog_key: replyTo.reblogKey,
+        tags
       })
 
       const url = `https://api.tumblr.com/v2/blog/${config.blogIdentifier}/posts/${createdPost.id}`
