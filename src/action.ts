@@ -93,65 +93,67 @@ export class PostTumblrAction<F extends Effect.URIS> {
     )
   }
 
-  program(): Effect.Kind<F, void> {
+  config(): Effect.Kind<F, Tumblr.Config> {
     return pipe(
       A.sequence(this.M)([
         this.requiredInput('consumer-key'),
         this.requiredInput('consumer-secret'),
         this.requiredInput('access-token'),
         this.requiredInput('access-token-secret'),
-        this.requiredInput('blog-identifier'),
-        this.requiredInput('text'),
-        this.runtime.inputs('replyTo')
+        this.requiredInput('blog-identifier')
       ]),
       maybeInputs =>
-        this.M.chain(
-          this.M.chain<Error, [Tumblr.Config, PostType], Post>(
-            this.M.map(maybeInputs, inputs => {
-              const [
-                consumerKey,
-                consumerSecret,
-                accessToken,
-                accessTokenSecret,
-                blogIdentifier,
-                text,
-                replyTo
-              ] = inputs
+        this.M.map(maybeInputs, inputs => {
+          const [
+            consumerKey,
+            consumerSecret,
+            accessToken,
+            accessTokenSecret,
+            blogIdentifier
+          ] = inputs
 
-              const config = {
-                consumerKey,
-                consumerSecret,
-                accessToken,
-                accessTokenSecret,
-                blogIdentifier
-              } as Tumblr.Config
-
-              const post: PostType = replyTo
-                ? ({ kind: 'reblog', text, replyTo, media: [] } as Reblog)
-                : ({ kind: 'text', text, media: [] } as TextPost)
-
-              return [config, post] as [Tumblr.Config, PostType]
-            }),
-            ([config, post]) => {
-              switch (post.kind) {
-                case 'text':
-                  return this.post(config, post)
-
-                case 'reblog':
-                  return this.reblog(config, post)
-
-                default:
-                  return this.M.throwError(
-                    new Error('could not determine post type')
-                  )
-              }
-            }
-          ),
-          (post: Post) => {
-            const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`
-            return this.runtime.output('post-id', postId)
+          const config: Tumblr.Config = {
+            consumerKey,
+            consumerSecret,
+            accessToken,
+            accessTokenSecret,
+            blogIdentifier
           }
-        )
+
+          return config
+        })
+    )
+  }
+
+  send(post: PostType): Effect.Kind<F, Post> {
+    return this.M.chain(this.config(), config => {
+      switch (post.kind) {
+        case 'text':
+          return this.post(config, post)
+
+        case 'reblog':
+          return this.reblog(config, post)
+
+        default:
+          return this.M.throwError(new Error('could not determine post type'))
+      }
+    })
+  }
+
+  program(): Effect.Kind<F, void> {
+    return this.M.chain(
+      this.M.chain(this.requiredInput('text'), text => {
+        return this.M.chain(this.runtime.inputs('replyTo'), maybeReplyTo => {
+          const post: PostType = maybeReplyTo
+            ? { kind: 'reblog', text, replyTo: maybeReplyTo }
+            : { kind: 'text', text }
+          return this.send(post)
+        })
+      }),
+      (post: Post) => {
+        const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`
+        return this.runtime.output('post-id', postId)
+      }
     )
   }
 }

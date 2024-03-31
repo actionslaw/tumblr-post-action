@@ -42953,17 +42953,15 @@ class PostTumblrAction {
         }));
         return this.M.chain(logMediaPath(this.runtime.inputs('media')), media => media ? logMedia(this.runtime.fs(media)) : this.M.of([]));
     }
-    program() {
+    config() {
         return (0, function_1.pipe)(A.sequence(this.M)([
             this.requiredInput('consumer-key'),
             this.requiredInput('consumer-secret'),
             this.requiredInput('access-token'),
             this.requiredInput('access-token-secret'),
-            this.requiredInput('blog-identifier'),
-            this.requiredInput('text'),
-            this.runtime.inputs('replyTo')
-        ]), maybeInputs => this.M.chain(this.M.chain(this.M.map(maybeInputs, inputs => {
-            const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier, text, replyTo] = inputs;
+            this.requiredInput('blog-identifier')
+        ]), maybeInputs => this.M.map(maybeInputs, inputs => {
+            const [consumerKey, consumerSecret, accessToken, accessTokenSecret, blogIdentifier] = inputs;
             const config = {
                 consumerKey,
                 consumerSecret,
@@ -42971,11 +42969,11 @@ class PostTumblrAction {
                 accessTokenSecret,
                 blogIdentifier
             };
-            const post = replyTo
-                ? { kind: 'reblog', text, replyTo, media: [] }
-                : { kind: 'text', text, media: [] };
-            return [config, post];
-        }), ([config, post]) => {
+            return config;
+        }));
+    }
+    send(post) {
+        return this.M.chain(this.config(), config => {
             switch (post.kind) {
                 case 'text':
                     return this.post(config, post);
@@ -42984,10 +42982,20 @@ class PostTumblrAction {
                 default:
                     return this.M.throwError(new Error('could not determine post type'));
             }
+        });
+    }
+    program() {
+        return this.M.chain(this.M.chain(this.requiredInput('text'), text => {
+            return this.M.chain(this.runtime.inputs('replyTo'), maybeReplyTo => {
+                const post = maybeReplyTo
+                    ? { kind: 'reblog', text, replyTo: maybeReplyTo }
+                    : { kind: 'text', text };
+                return this.send(post);
+            });
         }), (post) => {
             const postId = `${post.id}|${post.tumblelogId}|${post.reblogKey}`;
             return this.runtime.output('post-id', postId);
-        }));
+        });
     }
 }
 exports.PostTumblrAction = PostTumblrAction;
